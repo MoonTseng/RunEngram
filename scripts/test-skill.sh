@@ -41,6 +41,8 @@ required_sections = {
         "taskline capsule use",
         "--producer claude-code",
         "## Prompt shorthand",
+        "### Automatic project bootstrap",
+        "git remote get-url origin",
         "taskline-management <requirement>",
         "taskline-management run <requirement>",
         "taskline-management spec <requirement>",

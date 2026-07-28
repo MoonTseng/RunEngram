@@ -71,11 +71,8 @@ func (unavailablePullRequestVerifier) VerifyPullRequest(context.Context, PullReq
 	return PullRequestStatus{}, errors.New("GitHub verifier is not configured")
 }
 
-func defaultStateEntryRules(verifier PullRequestVerifier) map[model.TaskState][]StateEntryRule {
-	return map[model.TaskState][]StateEntryRule{
-		model.StateReview: {StateEntryRuleFunc(reviewEntryRule(verifier))},
-		model.StateDone:   {StateEntryRuleFunc(doneEntryRule(verifier))},
-	}
+func defaultStateEntryRules(_ PullRequestVerifier) map[model.TaskState][]StateEntryRule {
+	return make(map[model.TaskState][]StateEntryRule)
 }
 
 func (s *Service) validateStateEntry(ctx context.Context, task *model.Task, target model.TaskState) error {

@@ -650,7 +650,7 @@ func TestStateTransitionAtAPI(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, st)
 }
 
-func TestStateEntryEvidenceErrorsAtAPI(t *testing.T) {
+func TestManualReviewAndDoneTransitionsAtAPI(t *testing.T) {
 	verifier := &mutablePullRequestVerifier{status: service.PullRequestStatus{
 		State:            service.PullRequestOpen,
 		CheckRollupState: service.CheckRollupSuccess,
@@ -662,34 +662,13 @@ func TestStateEntryEvidenceErrorsAtAPI(t *testing.T) {
 	jsonReq(t, http.MethodPost, base+"/api/v1/projects/evidence/tasks",
 		map[string]any{"title": "guarded", "type": "feature", "auto_start": true}, &tk)
 
-	status, body := jsonReqError(t, http.MethodPatch, base+"/api/v1/tasks/"+tk.ID, map[string]any{"state": "review"})
-	require.Equal(t, http.StatusConflict, status)
-	require.Contains(t, body, "attach a valid GitHub PR")
-	require.Contains(t, body, "taskline task link "+tk.ID)
-
-	attachTestPullRequest(t, base, tk.ID)
-	status = jsonReq(t, http.MethodPatch, base+"/api/v1/tasks/"+tk.ID, map[string]any{"state": "review"}, &tk)
+	status := jsonReq(t, http.MethodPatch, base+"/api/v1/tasks/"+tk.ID, map[string]any{"state": "review"}, &tk)
 	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "review", tk.State)
 
-	status, body = jsonReqError(t, http.MethodPatch, base+"/api/v1/tasks/"+tk.ID, map[string]any{"state": "done", "force": true})
-	require.Equal(t, http.StatusConflict, status)
-	require.Contains(t, body, "has not been merged")
-	require.Contains(t, body, "resolve review comments, wait for CI, merge the PR")
-
-	verifier.status = service.PullRequestStatus{
-		State:            service.PullRequestMerged,
-		Merged:           true,
-		CheckRollupState: service.CheckRollupSuccess,
-	}
 	status = jsonReq(t, http.MethodPatch, base+"/api/v1/tasks/"+tk.ID, map[string]any{"state": "done"}, &tk)
 	require.Equal(t, http.StatusOK, status)
 	require.Equal(t, "done", tk.State)
-
-	verifier.err = fmt.Errorf("rate limited")
-	status, body = jsonReqError(t, http.MethodPatch, base+"/api/v1/tasks/"+tk.ID, map[string]any{"state": "review"})
-	require.Equal(t, http.StatusServiceUnavailable, status)
-	require.Contains(t, body, "state entry verification unavailable")
-	require.Contains(t, body, "rate limited")
 }
 
 func TestAutoStartDefaultsToPendingAndExcludesFromRunnable(t *testing.T) {

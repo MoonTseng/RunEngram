@@ -90,7 +90,7 @@ RunEngram 位于 Coding Agent 外部。原来的提示词、Skill、CI 和团队
 - 依赖关系、优先级、标签、Markdown 文档、图片和链接；
 - 原子领取、租约、心跳和中断恢复；
 - 只追加的任务历史，记录操作者、时间和具体改动；
-- 完成任务前检查 GitHub PR、Review 对话和 CI；
+- 支持不使用 GitHub PR 或 CI 的团队手动评审和完成任务；有交付证据时仍可附加链接与验证文档；
 - 行动台、看板、依赖图和工程记忆页面；
 - 中英文切换，默认使用 Dracula 深色主题；
 - Agent 开始任务时生成固定的上下文快照；
@@ -121,21 +121,33 @@ codex plugin marketplace add MoonTseng/RunEngram --ref main
 codex plugin add runengram@runengram
 ```
 
-新建一个 Codex 任务，然后输入：
+两个命令都要执行：第一个只添加市场源，第二个才安装插件。普通使用者不需要
+运行 `plugin-creator`。先确认 `runengram@runengram` 显示为
+`installed, enabled`：
+
+```bash
+codex plugin list
+```
+
+完全退出并重新打开 Codex，新建任务后输入：
 
 ```text
 在这台电脑上安装并启动 RunEngram。
 ```
 
 安装过程会下载带校验和的 Release，安装到 `~/.local`，启动仅监听本机回环
-地址的服务；项目数据仍保存在本机。升级：
+地址的服务；项目数据仍保存在本机。安装后可以输入
+`taskline-management 【需求描述】`，或从 Skill 列表选择
+**Taskline Management**。它是 Skill 触发词，不是终端命令。首次在 Git
+工程中使用时，RunEngram 会读取仓库名并自动创建对应项目，不再询问项目名。
+升级：
 
 ```bash
 codex plugin marketplace upgrade runengram
 codex plugin add runengram@runengram
 ```
 
-升级后新建 Codex 任务，使新版 Skills 生效。
+升级后完全重启 Codex 并新建任务，使新版 Skills 生效。
 
 ## 从源码构建
 

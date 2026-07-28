@@ -148,35 +148,27 @@ pending ⇄ start ──▶ spec ──▶ dev ──▶ test ──▶ review �
 
 Implemented as a membership set in `model.stateOrder`. `CanTransitionTo`
 only rejects unknown state names — direction is the agent's call. The
-service layer enforces both membership and target-state entry rules before
-calling `store.UpdateTask`. Directional jumps remain legal, but they do not
-bypass evidence rules. Dropping `review → dev` is intentional (a review can
-surface a defect that legitimately reopens the implementation).
+service layer enforces membership before calling `store.UpdateTask`.
+Directional jumps remain legal. Dropping `review → dev` is intentional
+(a review can surface a defect that legitimately reopens the implementation).
 `test` is the local verification stage after implementation and before
-PR/review: unit tests, API e2e, browser smoke, and test coverage review
-belong there, while code review and CI belong in `review`.
+review: unit tests, API e2e, browser smoke, and test coverage review
+belong there. Teams with PR and CI may attach those results during `review`;
+teams without them can record manual review evidence and continue.
 
 The store records `completed_at` when a task enters `done`, clears it when the
 task leaves `done`, and preserves it across ordinary edits and heartbeats. This
 is the stable work-end timestamp; `updated_at` remains the timestamp of the most
 recent mutation and must not be used as completion evidence.
 
-Entry rules are registered by target state in
-`server/internal/service/workflow.go`. They run only when the state actually
-changes, so ordinary edits and same-state updates do not call external
-systems. The built-in rules are:
-
-- `review`: an attached `https://github.com/<owner>/<repo>/pull/<n>` must
-  resolve to an open or merged PR.
-- `done`: an attached PR must be merged, have zero unresolved review threads,
-  and have a successful check rollup (or no configured checks).
-
-`PullRequestVerifier` is owned by the service package; the concrete GraphQL
-adapter lives in `server/internal/github`. This keeps GitHub transport and
-credential lookup outside workflow policy and gives future state rules the
-same registry without expanding the handler. Missing evidence is a 409;
-temporary verification/authentication failure is a 503. Store `Force` does
-not bypass these rules.
+Optional entry rules can be registered by target state through
+`server/internal/service/workflow.go`. The default registry is empty, so
+`review` and `done` do not require GitHub, PR, or CI access. Rules run only
+when the state actually changes, keeping ordinary edits and same-state
+updates free of external calls. `PullRequestVerifier` and its concrete
+GraphQL adapter remain available for a future opt-in delivery policy rather
+than being imposed on every project. Store `Force` only bypasses claim
+ownership; it is not needed for ordinary manual completion.
 
 `pending` lives off the main pipeline: tasks created without
 `auto_start=true` land there, and any state may transition into it to

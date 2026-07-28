@@ -57,10 +57,11 @@ ordering, dependencies, more than one item, "what's next?". Examples:
 If the user explicitly names or invokes `taskline-management` and gives
 no additional instruction, treat that as "work the current project's
 runnable queue": resolve the project from `--project`, `$TASKLINE_PROJECT`,
-or the current repository name when it is unambiguous. If the project
-cannot be resolved, ask only for the project name. Once a project is
-known, export `TASKLINE_PROJECT` for the session or pass `--project`
-on every project-scoped command. Before doing queue work, make sure
+or the current repository name. Auto-create the repository project when the
+server has no matching project. Ask for a project name only outside a Git
+repository when existing projects are ambiguous. Once a project is known,
+export `TASKLINE_PROJECT` for the session or pass `--project` on every
+project-scoped command. Before doing queue work, make sure
 the current working directory has a valid agent identity by running
 `taskline status --format json`. Register only when it reports
 `"registered": false`, then run status again. If status fails because
@@ -92,14 +93,27 @@ creating the task.
 | `taskline-management pending <requirement>` / `taskline-management 待规划 <需求>` | Create one task with `--auto-start=false` and stop. |
 | `taskline-management` with no payload | Claim and drain the current project's runnable queue as documented below. |
 
-Resolve the project in this order:
+### Automatic project bootstrap
 
-1. explicit `project:<name>` or `项目:<名称>` in the prompt;
-2. `$TASKLINE_PROJECT`;
-3. an exact, case-insensitive match between the current repository name and a
-   project returned by `taskline project list`;
-4. the only project returned by `taskline project list`;
-5. otherwise ask only for the project name.
+Never ask a developer to configure a project when the current code repository
+already provides a stable name.
+
+1. Run `taskline project list --format json`.
+2. Choose a candidate in this order:
+   - explicit `project:<name>` or `项目:<名称>` in the prompt;
+   - `$TASKLINE_PROJECT`;
+   - repository name from `git remote get-url origin`, stripping transport,
+     parent path, and trailing `.git`;
+   - basename of `git rev-parse --show-toplevel`.
+3. Reuse an exact case-insensitive project match.
+4. When a candidate exists but no project matches, create it immediately:
+   `taskline project create --name "<candidate>" --description "Auto-created from current repository"`.
+   Do not ask for confirmation.
+5. With no repository candidate, use the only existing project.
+6. Ask only for a project name when no candidate exists and the server has
+   zero or multiple projects.
+7. Export the resolved name as `TASKLINE_PROJECT` for the current session or
+   pass it on every project-scoped command.
 
 Remove the explicit project selector from the stored task description. Preserve
 the rest of the requirement text instead of compressing it into a few sentences.
@@ -171,13 +185,12 @@ Use `taskline task history <id>` whenever you need durable operation context or
 the exact before/after values for title, description, state, type, priority, or
 labels.
 
-**State machine.** Any state may transition toward any other named state, but
-target-state evidence rules still apply. Drop-backs (`review` → `dev` when a
-defect surfaces) and directional jumps are legal; entering `review` requires
-an attached valid GitHub PR, and entering `done` requires that PR to be merged
-with review threads resolved and CI green or not configured. `--force` does
-not bypass these gates. Unknown state names are rejected — don't invent new
-ones.
+**State machine.** Any state may transition toward any other named state.
+Drop-backs (`review` → `dev` when a defect surfaces) and directional jumps are
+legal. The default server does not require a GitHub PR or CI to enter `review`
+or `done`; record the strongest evidence the current project actually has.
+`--force` only bypasses claim ownership. Unknown state names are rejected —
+don't invent new ones.
 `test` is the local verification stage between implementation and
 review: test review, unit tests, API e2e, browser smoke, and any other
 checks that should pass before PR review/CI begins.
@@ -584,64 +597,38 @@ task description or implementation notes, then continue.
   7. Create or update a `Test Report` task doc with reviewed test
      cases, commands/checks run, pass rate, failures, and whether any
      failures require dropping back to `dev`.
-  8. Stage and commit. Conventional, minimal messages.
-  9. `git push -u origin <branch>`.
-  10. `gh pr create` with title, summary, and a test plan.
-  11. Attach the PR URL to the task:
-     `taskline task link <task-id> --url <pr-url> --label "PR #N"`
-     so anyone reading the task later can jump straight to the
-     review.
+  8. For code in a Git worktree, stage and commit with a conventional,
+     minimal message.
+  9. When the project uses remote branches or PRs, push, open the PR, and
+     attach its URL:
+     `taskline task link <task-id> --url <pr-url> --label "PR #N"`.
+     Skip this for local-only, research, docs, and teams without PR workflow.
 - **Advance:** `taskline task update <id> --state review`
-- **Skip when:** never. Tests and a real pushed PR are the gate. The server
-  rejects the transition until the PR link has been attached.
+- **Skip when:** never. Verification evidence is required in the task record;
+  a pushed PR is optional unless the project itself requires one.
 
 ### review → done
 
-- **Trigger:** a PR exists for the committed implementation.
+- **Trigger:** implementation or non-code deliverable is ready for final
+  review.
 - **Actions:**
-  1. **Wait for CI** if configured. If it fails, drop the task back to
-     `dev`, fix the root cause locally, re-run tests, and push.
-  2. **Wait for at least one review** — human or bot
-     (`gemini-code-assist`, etc.). Don't merge before any review has
-     posted; the whole point of opening a PR is the second pair of
-     eyes. Poll with:
-
-     ```bash
-     gh pr view <n> --json reviews,reviewDecision,statusCheckRollup
-     ```
-
-     Re-check periodically until `reviews` is non-empty.
-  3. Read **every** comment surface — one endpoint isn't enough:
-
-     ```bash
-     gh api repos/<owner>/<repo>/pulls/<n>/reviews     # bot summaries
-     gh api repos/<owner>/<repo>/pulls/<n>/comments    # inline review comments
-     gh api repos/<owner>/<repo>/issues/<n>/comments   # top-level PR conversation
-     ```
-
-     Address each finding; for real defects, drop the task back to
-     `dev`, re-run tests after each batch, and push. If a comment is
-     wrong, **reply with reasoning** rather than silently ignoring it.
-  4. Merge with `gh pr merge --squash --delete-branch` (or the project's
-     required merge style) only after reviews and CI are ready.
-  5. Confirm the remote result with
-     `gh pr view <n> --json state,mergedAt,statusCheckRollup`.
-  6. Create or update a `Review Report` task doc covering PR comments,
-     CI status, merge result, and whether the implementation still matches
-     the original design. If not, either update the design doc with the
-     justified change or drop back to `dev` for rework.
-- **Advance:** `taskline task update <id> --state done` *only after*
-  (a) CI green or N/A, (b) at least one review posted, and
-  (c) every reviewer comment addressed or rebutted, and (d) the PR is merged.
-  The server queries GitHub and rejects `done` when merge, review-thread, or CI
-  evidence is incomplete.
+  1. Check acceptance criteria and the `Test Report`.
+  2. If the project uses PR review or CI, wait for it, address every finding,
+     merge according to project policy, and attach the result.
+  3. Without PR or CI, perform manual review of the diff or deliverable and
+     record reviewer, checks, result, and remaining risks in a `Review Report`.
+  4. If review surfaces a defect, move back to `dev`, fix it, and repeat
+     verification.
+- **Advance:** `taskline task update <id> --state done` after acceptance
+  criteria pass and available evidence is recorded. The server allows this
+  manual transition.
 - **Drop back to dev** with `taskline task update <id> --state dev`
   when review or CI surfaces a real defect. The bidirectional state
   machine exists for exactly this — don't delete-and-recreate.
 
 ### done — wrap-up
 
-- **Trigger:** task is `done` after the PR was merged and verified.
+- **Trigger:** task is `done` after configured or manual verification.
 - **Actions:**
   1. Run `taskline learning list --task <id> --status pending` again. Verify no
      candidate was silently promoted. Promote only with evidence, reject only
@@ -651,9 +638,8 @@ task description or implementation notes, then continue.
      fingerprints, and Markdown evidence. Never promote guesses, raw chat,
      secrets, credentials, task-only prose, or conclusions not rechecked
      against code.
-  3. `git checkout main && git pull`
-  4. Delete the local feature branch (gh's `--delete-branch` may have
-     done this already).
+  3. For Git-backed code work, return to the main branch, pull, and remove
+     the completed local branch when project policy allows it.
 - The taskline task is already `done`; this stage is repo hygiene.
 
 ## Fast path
@@ -665,15 +651,15 @@ A task qualifies as fast-path when **all** of:
 - no test scaffolding or new dependency.
 
 Examples: typo in a comment, raising a log level, bumping a constant.
-The product/spec work may collapse, but the delivery gates do not:
+The product/spec work may collapse, but verification still happens:
 
 ```
 	start → dev → test → review → done
 ```
 
-Skip a separate Spec when appropriate and keep stage docs concise, but still
-use a branch, commit, real push, PR, CI/review, and merge. Documentation never
-substitutes for delivery evidence.
+Skip a separate Spec when appropriate and keep stage docs concise. Follow
+the project's actual delivery policy: local commit, remote branch, PR, CI, or
+manual review. Record whatever evidence exists; never invent missing systems.
 
 ## Gotchas
 
@@ -692,15 +678,6 @@ substitutes for delivery evidence.
   `pending/start/spec/dev/test/review/done`. The state `created` was
   renamed to `start`, and `design` was renamed to `spec`; don't
   reintroduce old names.
-- **`cannot enter review`** — create and push the branch, open a real GitHub
-  PR, attach it with the exact `taskline task link ...` command shown in the
-  error, then retry the state update.
-- **`cannot enter done`** — follow the listed blocker: resolve every review
-  thread, wait for CI, merge the PR, update task docs/links, then retry. Do not
-  use `--force`; it cannot bypass delivery evidence.
-- **`state entry verification unavailable`** — GitHub could not be queried.
-  Configure `TASKLINE_GITHUB_TOKEN`/`GITHUB_TOKEN`/`GH_TOKEN` for the server or
-  run `gh auth login` on the server host, then retry.
 - **`dependency would create a cycle`** — the edge would loop back.
   Restructure the graph or pick a different anchor.
 - **`project name "X" already exists`** — name collision. Reuse the

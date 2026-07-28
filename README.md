@@ -96,7 +96,8 @@ Sources: [GitHub Copilot Memory](https://docs.github.com/en/copilot/concepts/age
 - Dependencies, priorities, labels, Markdown documents, images, and links.
 - Atomic claims, leases, heartbeats, and interrupted-task recovery.
 - Append-only task history with actor, time, and changed fields.
-- GitHub PR, review-thread, and CI checks before completion.
+- Manual review and completion for teams without GitHub PR or CI; links and
+  verification documents can still be attached when available.
 - Action Console, Kanban, dependency graph, and engineering-memory views.
 - English and Simplified Chinese UI; Dracula is the default theme.
 - A fixed context snapshot when an agent starts a task.
@@ -134,21 +135,33 @@ codex plugin marketplace add MoonTseng/RunEngram --ref main
 codex plugin add runengram@runengram
 ```
 
-Start a new Codex task, then ask:
+Both commands are required: the first adds the catalog; the second installs
+the plugin. `plugin-creator` is not part of user setup. Confirm
+`runengram@runengram` says `installed, enabled`:
+
+```bash
+codex plugin list
+```
+
+Fully restart Codex, start a new task, then ask:
 
 ```text
 Set up RunEngram on this computer.
 ```
 
 Setup downloads a checksum-verified release, installs it under `~/.local`,
-starts a loopback-only service, and keeps project data local. To update:
+starts a loopback-only service, and keeps project data local. After setup,
+type `taskline-management <request>` or select **Taskline Management** from the
+Skill picker. It is a Skill trigger, not a shell command. On first use inside
+a Git repository, RunEngram derives the repository name and creates the
+matching project automatically. To update:
 
 ```bash
 codex plugin marketplace upgrade runengram
 codex plugin add runengram@runengram
 ```
 
-Start a new Codex task after upgrade so refreshed skills load.
+Fully restart Codex and start a new task after upgrade so refreshed skills load.
 
 ## Build from source
 

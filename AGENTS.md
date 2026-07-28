@@ -75,12 +75,12 @@ and are not installed globally.
   dependency — it breaks cross-compile and the `go run` workflow.
 - **State machine.** `pending → start → spec → dev → test → review → done`.
   Movement in either direction is allowed (review surfacing a bug →
-  drop back to dev is a real workflow), but target states may have service-layer
-  entry rules. Entering `review` requires an attached, live GitHub PR;
-  entering `done` requires a merged PR with no unresolved review threads and
-  green or absent CI checks. `--force` only bypasses claim ownership and never
-  bypasses workflow evidence. `pending` is a non-runnable parking lot; the entry-point
-  state is `start` (formerly `created`). `spec` is for product
+  drop back to dev is a real workflow). The default service has no GitHub PR
+  or CI entry gate: people and agents may move work into `review` or `done`
+  manually and attach whatever evidence the project actually uses. Optional
+  target-state rules may be registered later through the service extension
+  point. `--force` only bypasses claim ownership. `pending` is a non-runnable
+  parking lot; the entry-point state is `start` (formerly `created`). `spec` is for product
   requirements, UX, scope, and acceptance criteria; technical design
   and implementation start in `dev`; full local verification belongs in
   `test`; code review and CI belong in `review`. Tasks created without

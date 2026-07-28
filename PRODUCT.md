@@ -60,7 +60,7 @@ The current alpha ships the **task execution and learning kernel**:
 - atomic claims, leases, heartbeats, and recovery;
 - Markdown documents, images, links, and labels;
 - append-only task operation history;
-- GitHub PR, review, and CI evidence gates;
+- manual review and completion, with optional PR, CI, and document evidence;
 - JSON-first CLI and an agent-facing skill;
 - an embedded bilingual web UI with an action-first default workspace,
   Kanban, dependency graph, engineering-memory inspection, and Dracula/paper
