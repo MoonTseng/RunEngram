@@ -255,12 +255,17 @@ type CapsuleUsage struct {
 type LearningMetrics struct {
 	CapsuleCount       int     `json:"capsule_count"`
 	ActiveCapsuleCount int     `json:"active_capsule_count"`
+	LearningNoteCount  int     `json:"learning_note_count"`
+	PendingNoteCount   int     `json:"pending_note_count"`
+	PromotedNoteCount  int     `json:"promoted_note_count"`
+	RejectedNoteCount  int     `json:"rejected_note_count"`
 	SnapshotTaskCount  int     `json:"snapshot_task_count"`
 	ReusedTaskCount    int     `json:"reused_task_count"`
 	HelpfulCount       int     `json:"helpful_count"`
 	RejectedCount      int     `json:"rejected_count"`
 	StaleCount         int     `json:"stale_count"`
 	HelpfulRate        float64 `json:"helpful_rate"`
+	PromotionRate      float64 `json:"promotion_rate"`
 }
 
 // Link is a URL attached to a task — typically a spec doc, PR, technical

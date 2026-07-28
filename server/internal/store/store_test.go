@@ -151,6 +151,60 @@ func TestLearningNotePersistenceAndTaskAttachment(t *testing.T) {
 	require.Equal(t, note.ID, withDetails.LearningNotes[0].ID)
 }
 
+func TestLearningNotePromotionIsAtomicAndIdempotent(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	project, err := st.CreateProject(ctx, "learning-promotion", "")
+	require.NoError(t, err)
+	task, err := st.CreateTask(ctx, project.ID, "Read Notion PRD", "", model.TaskTypeFeature, 1, model.StateStart)
+	require.NoError(t, err)
+	note := &model.LearningNote{
+		ProjectID: project.ID, SourceTaskID: task.ID,
+		Kind:    model.LearningNoteAgentRecovery,
+		Trigger: "Direct fetch failed", Guidance: "Use notion-to-prd",
+		Scope: "Notion requirements", Labels: []string{"notion"},
+		Fingerprints: []string{"notion-to-prd"}, Producer: "codex",
+	}
+	require.NoError(t, st.CreateLearningNote(ctx, note))
+
+	firstNote, firstCapsule, err := st.PromoteLearningNote(ctx, note.ID, "PRD generated and checked")
+	require.NoError(t, err)
+	secondNote, secondCapsule, err := st.PromoteLearningNote(ctx, note.ID, "retry")
+	require.NoError(t, err)
+	require.Equal(t, firstNote.CapsuleID, secondNote.CapsuleID)
+	require.Equal(t, firstCapsule.ID, secondCapsule.ID)
+	require.Equal(t, model.LearningNotePromoted, secondNote.Status)
+
+	capsules, err := st.ListCapsules(ctx, store.CapsuleFilter{ProjectID: project.ID})
+	require.NoError(t, err)
+	require.Len(t, capsules, 1)
+}
+
+func TestLearningNoteRejectionIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	project, err := st.CreateProject(ctx, "learning-rejection", "")
+	require.NoError(t, err)
+	task, err := st.CreateTask(ctx, project.ID, "Try recovery", "", model.TaskTypeBug, 1, model.StateStart)
+	require.NoError(t, err)
+	note := &model.LearningNote{
+		ProjectID: project.ID, SourceTaskID: task.ID,
+		Kind: model.LearningNoteAgentRecovery, Trigger: "Fallback worked once",
+		Guidance: "Use temporary fallback", Producer: "codex",
+	}
+	require.NoError(t, st.CreateLearningNote(ctx, note))
+
+	first, err := st.RejectLearningNote(ctx, note.ID, "not general enough")
+	require.NoError(t, err)
+	second, err := st.RejectLearningNote(ctx, note.ID, "retry")
+	require.NoError(t, err)
+	require.Equal(t, first.ID, second.ID)
+	require.Equal(t, "not general enough", second.RejectionReason)
+
+	_, _, err = st.PromoteLearningNote(ctx, note.ID, "late evidence")
+	require.ErrorIs(t, err, store.ErrConflict)
+}
+
 func TestStateTransitionRules(t *testing.T) {
 	// Forward jumps are allowed.
 	require.NoError(t, model.StateStart.CanTransitionTo(model.StateSpec))

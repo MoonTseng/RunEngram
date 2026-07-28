@@ -1854,6 +1854,146 @@ func (s *Store) ListLearningNotes(ctx context.Context, filter LearningNoteFilter
 	return notes, rows.Err()
 }
 
+func (s *Store) PromoteLearningNote(
+	ctx context.Context,
+	id string,
+	evidence string,
+) (*model.LearningNote, *model.ExplorationCapsule, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer tx.Rollback()
+
+	note, err := getLearningNoteTx(ctx, tx, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	switch note.Status {
+	case model.LearningNotePromoted:
+		capsule, err := getCapsuleTx(ctx, tx, note.CapsuleID)
+		if err != nil {
+			return nil, nil, err
+		}
+		return note, capsule, nil
+	case model.LearningNoteRejected:
+		return nil, nil, fmt.Errorf("%w: rejected learning note cannot be promoted", ErrConflict)
+	}
+
+	title := strings.TrimSpace(note.Guidance)
+	if utf8.RuneCountInString(title) > 120 {
+		title = string([]rune(title)[:120])
+	}
+	labelsJSON, _ := encodeLabels(note.Labels)
+	fingerprintsJSON, _ := encodeLabels(note.Fingerprints)
+	resolvedAt := now()
+	capsule := &model.ExplorationCapsule{
+		ID:           newID(),
+		ProjectID:    note.ProjectID,
+		SourceTaskID: note.SourceTaskID,
+		Title:        title,
+		Summary:      note.Guidance,
+		Scope:        note.Scope,
+		Evidence:     evidence,
+		Labels:       append([]string(nil), note.Labels...),
+		Fingerprints: append([]string(nil), note.Fingerprints...),
+		Producer:     note.Producer,
+		Status:       model.CapsuleStatusActive,
+		CreatedAt:    resolvedAt,
+		UpdatedAt:    resolvedAt,
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO exploration_capsules(
+			id,project_id,source_task_id,title,summary,scope,evidence,labels,fingerprints,
+			producer,status,created_at,updated_at
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		capsule.ID, capsule.ProjectID, capsule.SourceTaskID, capsule.Title, capsule.Summary,
+		capsule.Scope, capsule.Evidence, labelsJSON, fingerprintsJSON, capsule.Producer,
+		capsule.Status, capsule.CreatedAt, capsule.UpdatedAt,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	result, err := tx.ExecContext(ctx, `
+		UPDATE learning_notes
+		   SET status=?, evidence=?, capsule_id=?, rejection_reason='', updated_at=?, resolved_at=?
+		 WHERE id=? AND status=?`,
+		model.LearningNotePromoted, evidence, capsule.ID, resolvedAt, resolvedAt,
+		note.ID, model.LearningNotePending,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return nil, nil, err
+	}
+	if affected != 1 {
+		return nil, nil, fmt.Errorf("%w: learning note status changed", ErrConflict)
+	}
+	note.Status = model.LearningNotePromoted
+	note.Evidence = evidence
+	note.CapsuleID = capsule.ID
+	note.RejectionReason = ""
+	note.UpdatedAt = resolvedAt
+	note.ResolvedAt = resolvedAt
+	if err := tx.Commit(); err != nil {
+		return nil, nil, err
+	}
+	return note, capsule, nil
+}
+
+func (s *Store) RejectLearningNote(
+	ctx context.Context,
+	id string,
+	reason string,
+) (*model.LearningNote, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	note, err := getLearningNoteTx(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	switch note.Status {
+	case model.LearningNoteRejected:
+		return note, nil
+	case model.LearningNotePromoted:
+		return nil, fmt.Errorf("%w: promoted learning note cannot be rejected", ErrConflict)
+	}
+	resolvedAt := now()
+	result, err := tx.ExecContext(ctx, `
+		UPDATE learning_notes
+		   SET status=?, rejection_reason=?, evidence='', capsule_id='', updated_at=?, resolved_at=?
+		 WHERE id=? AND status=?`,
+		model.LearningNoteRejected, reason, resolvedAt, resolvedAt,
+		note.ID, model.LearningNotePending,
+	)
+	if err != nil {
+		return nil, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if affected != 1 {
+		return nil, fmt.Errorf("%w: learning note status changed", ErrConflict)
+	}
+	note.Status = model.LearningNoteRejected
+	note.RejectionReason = reason
+	note.Evidence = ""
+	note.CapsuleID = ""
+	note.UpdatedAt = resolvedAt
+	note.ResolvedAt = resolvedAt
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return note, nil
+}
+
 func (s *Store) attachLearningNotes(ctx context.Context, task *model.Task) error {
 	notes, err := s.ListLearningNotes(ctx, LearningNoteFilter{TaskID: task.ID})
 	if err != nil {
@@ -1938,6 +2078,20 @@ func scanLearningNote(scanner learningNoteScanner) (*model.LearningNote, error) 
 		return nil, err
 	}
 	return &note, nil
+}
+
+func getLearningNoteTx(ctx context.Context, tx *sql.Tx, id string) (*model.LearningNote, error) {
+	row := tx.QueryRowContext(
+		ctx,
+		`SELECT `+learningNoteSelectColumns+` FROM learning_notes WHERE id = ?`,
+		id,
+	)
+	return scanLearningNote(row)
+}
+
+func getCapsuleTx(ctx context.Context, tx *sql.Tx, id string) (*model.ExplorationCapsule, error) {
+	row := tx.QueryRowContext(ctx, capsuleSelectSQL+` WHERE c.id = ? GROUP BY c.id`, id)
+	return scanCapsule(row)
 }
 
 // CapsuleFilter narrows project knowledge reads.
@@ -2174,6 +2328,10 @@ func (s *Store) GetLearningMetrics(ctx context.Context, projectID string) (*mode
 		SELECT
 		  COUNT(DISTINCT c.id),
 		  COUNT(DISTINCT CASE WHEN c.status='active' THEN c.id END),
+		  COUNT(DISTINCT n.id),
+		  COUNT(DISTINCT CASE WHEN n.status='pending' THEN n.id END),
+		  COUNT(DISTINCT CASE WHEN n.status='promoted' THEN n.id END),
+		  COUNT(DISTINCT CASE WHEN n.status='rejected' THEN n.id END),
 		  COUNT(DISTINCT cs.task_id),
 		  COUNT(DISTINCT u.task_id),
 		  COUNT(DISTINCT CASE WHEN u.outcome='helpful' THEN u.id END),
@@ -2181,17 +2339,24 @@ func (s *Store) GetLearningMetrics(ctx context.Context, projectID string) (*mode
 		  COUNT(DISTINCT CASE WHEN c.status='stale' THEN c.id END)
 		FROM projects p
 		LEFT JOIN exploration_capsules c ON c.project_id=p.id
+		LEFT JOIN learning_notes n ON n.project_id=p.id
 		LEFT JOIN context_snapshots cs ON cs.project_id=p.id
 		LEFT JOIN capsule_usages u ON u.capsule_id=c.id
 		WHERE p.id=?`, projectID,
-	).Scan(&metrics.CapsuleCount, &metrics.ActiveCapsuleCount, &metrics.SnapshotTaskCount,
-		&metrics.ReusedTaskCount, &metrics.HelpfulCount, &metrics.RejectedCount, &metrics.StaleCount)
+	).Scan(&metrics.CapsuleCount, &metrics.ActiveCapsuleCount,
+		&metrics.LearningNoteCount, &metrics.PendingNoteCount, &metrics.PromotedNoteCount,
+		&metrics.RejectedNoteCount, &metrics.SnapshotTaskCount, &metrics.ReusedTaskCount,
+		&metrics.HelpfulCount, &metrics.RejectedCount, &metrics.StaleCount)
 	if err != nil {
 		return nil, err
 	}
 	denominator := metrics.HelpfulCount + metrics.RejectedCount
 	if denominator > 0 {
 		metrics.HelpfulRate = float64(metrics.HelpfulCount) / float64(denominator)
+	}
+	resolvedNotes := metrics.PromotedNoteCount + metrics.RejectedNoteCount
+	if resolvedNotes > 0 {
+		metrics.PromotionRate = float64(metrics.PromotedNoteCount) / float64(resolvedNotes)
 	}
 	return &metrics, nil
 }
