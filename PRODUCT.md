@@ -53,7 +53,7 @@ it is not the product.
 
 ## Current product boundary
 
-The current alpha ships the **task execution kernel**:
+The current alpha ships the **task execution and learning kernel**:
 
 - a canonical seven-state workflow;
 - a dependency DAG and server-side runnable ordering;
@@ -64,13 +64,19 @@ The current alpha ships the **task execution kernel**:
 - JSON-first CLI and an agent-facing skill;
 - an embedded bilingual web UI;
 - local SQLite and filesystem storage.
+- immutable task-start context snapshots;
+- verified Exploration Capsules with project scope, evidence, fingerprints,
+  source task, and producer;
+- deterministic same-project recall;
+- observed helpful, rejected, and stale reuse outcomes plus honest aggregate
+  metrics.
 
 The current binary and environment-variable names retain `taskline` for
 compatibility. RunEngram is the public product name.
 
-The alpha does **not** yet claim to provide complete reusable engineering
-memory. Context snapshots, exploration capsules, learning promotion, and
-learning-lift measurement are roadmap capabilities.
+The alpha does **not** yet claim automatic learning promotion or causal
+time-saved estimates. Evidence-to-rule review and richer learning-lift
+measurement remain roadmap capabilities.
 
 ## Product principles
 
@@ -176,10 +182,10 @@ learning improvement.
 ## Roadmap order
 
 1. Stabilize one-task execution, evidence, recovery, and public installation.
-2. Add immutable context snapshots and freshness fingerprints.
-3. Add verified exploration capsules and task-level reuse.
-4. Add learning-note review and promotion.
-5. Add learning-lift measurement.
+2. ✅ Add immutable context snapshots and freshness fingerprints.
+3. ✅ Add verified exploration capsules and task-level observed reuse.
+4. Add learning-note review and evidence-to-rule promotion.
+5. Add richer learning-lift measurement after pilot data exists.
 6. Add optional small-team synchronization without weakening local-first use.
 
 Each phase must demonstrate reduced repeated work before the next layer earns

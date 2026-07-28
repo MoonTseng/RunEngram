@@ -84,6 +84,66 @@ type Task struct {
 	UpdatedAt      int64    `json:"updated_at"`
 }
 
+type ExplorationCapsule struct {
+	ID            string   `json:"id"`
+	ProjectID     string   `json:"project_id"`
+	SourceTaskID  string   `json:"source_task_id"`
+	Title         string   `json:"title"`
+	Summary       string   `json:"summary"`
+	Scope         string   `json:"scope"`
+	Evidence      string   `json:"evidence"`
+	Labels        []string `json:"labels"`
+	Fingerprints  []string `json:"fingerprints"`
+	Producer      string   `json:"producer"`
+	Status        string   `json:"status"`
+	UseCount      int      `json:"use_count"`
+	HelpfulCount  int      `json:"helpful_count"`
+	RejectedCount int      `json:"rejected_count"`
+	CreatedAt     int64    `json:"created_at"`
+	UpdatedAt     int64    `json:"updated_at"`
+}
+
+type ContextSnapshot struct {
+	ID                string               `json:"id"`
+	TaskID            string               `json:"task_id"`
+	ProjectID         string               `json:"project_id"`
+	Task              Task                 `json:"task"`
+	SuggestedCapsules []ExplorationCapsule `json:"suggested_capsules"`
+	CreatedAt         int64                `json:"created_at"`
+}
+
+type CapsuleUsage struct {
+	ID        string `json:"id"`
+	CapsuleID string `json:"capsule_id"`
+	TaskID    string `json:"task_id"`
+	Outcome   string `json:"outcome"`
+	Notes     string `json:"notes"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+type LearningMetrics struct {
+	CapsuleCount       int     `json:"capsule_count"`
+	ActiveCapsuleCount int     `json:"active_capsule_count"`
+	SnapshotTaskCount  int     `json:"snapshot_task_count"`
+	ReusedTaskCount    int     `json:"reused_task_count"`
+	HelpfulCount       int     `json:"helpful_count"`
+	RejectedCount      int     `json:"rejected_count"`
+	StaleCount         int     `json:"stale_count"`
+	HelpfulRate        float64 `json:"helpful_rate"`
+}
+
+type CreateCapsuleInput struct {
+	SourceTaskID string   `json:"source_task_id,omitempty"`
+	Title        string   `json:"title"`
+	Summary      string   `json:"summary"`
+	Scope        string   `json:"scope,omitempty"`
+	Evidence     string   `json:"evidence"`
+	Labels       []string `json:"labels,omitempty"`
+	Fingerprints []string `json:"fingerprints,omitempty"`
+	Producer     string   `json:"producer,omitempty"`
+}
+
 // TaskEvent is one append-only task operation record.
 type TaskEvent struct {
 	ID        string         `json:"id"`
@@ -197,6 +257,70 @@ func (c *Client) CreateTask(projectIDOrName string, in CreateTaskInput) (*Task, 
 	var out Task
 	path := fmt.Sprintf("/api/v1/projects/%s/tasks", url.PathEscape(projectIDOrName))
 	if err := c.do("POST", path, in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) GetTaskContext(taskID string) (*ContextSnapshot, error) {
+	var out ContextSnapshot
+	if err := c.do("GET", "/api/v1/tasks/"+url.PathEscape(taskID)+"/context", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateCapsule(projectIDOrName string, in CreateCapsuleInput) (*ExplorationCapsule, error) {
+	var out ExplorationCapsule
+	path := fmt.Sprintf("/api/v1/projects/%s/capsules", url.PathEscape(projectIDOrName))
+	if err := c.do("POST", path, in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) ListCapsules(projectIDOrName, query, status string) ([]ExplorationCapsule, error) {
+	values := url.Values{}
+	if query != "" {
+		values.Set("q", query)
+	}
+	if status != "" {
+		values.Set("status", status)
+	}
+	path := fmt.Sprintf("/api/v1/projects/%s/capsules", url.PathEscape(projectIDOrName))
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	var out struct {
+		Capsules []ExplorationCapsule `json:"capsules"`
+	}
+	if err := c.do("GET", path, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Capsules, nil
+}
+
+func (c *Client) UpdateCapsuleStatus(id, status string) (*ExplorationCapsule, error) {
+	var out ExplorationCapsule
+	if err := c.do("PATCH", "/api/v1/capsules/"+url.PathEscape(id), map[string]string{"status": status}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) RecordCapsuleUsage(id, taskID, outcome, notes string) (*CapsuleUsage, error) {
+	var out CapsuleUsage
+	body := map[string]string{"task_id": taskID, "outcome": outcome, "notes": notes}
+	if err := c.do("POST", "/api/v1/capsules/"+url.PathEscape(id)+"/usages", body, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) GetLearningMetrics(projectIDOrName string) (*LearningMetrics, error) {
+	var out LearningMetrics
+	path := fmt.Sprintf("/api/v1/projects/%s/learning-metrics", url.PathEscape(projectIDOrName))
+	if err := c.do("GET", path, nil, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

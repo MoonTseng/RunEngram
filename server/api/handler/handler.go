@@ -56,8 +56,12 @@ func (h *Handler) Register(s *server.Hertz) {
 	v1.GET("/projects/:project/tasks/search", h.searchTasks)
 	v1.GET("/projects/:project/tasks/runnable", h.listRunnableTasks)
 	v1.GET("/projects/:project/tasks/next", h.nextRunnableTask)
+	v1.GET("/projects/:project/capsules", h.listCapsules)
+	v1.POST("/projects/:project/capsules", h.createCapsule)
+	v1.GET("/projects/:project/learning-metrics", h.learningMetrics)
 
 	v1.GET("/tasks/:id", h.getTask)
+	v1.GET("/tasks/:id/context", h.taskContext)
 	v1.GET("/tasks/:id/events", h.listTaskEvents)
 	v1.PATCH("/tasks/:id", h.updateTask)
 	v1.DELETE("/tasks/:id", h.deleteTask)
@@ -76,6 +80,9 @@ func (h *Handler) Register(s *server.Hertz) {
 	v1.DELETE("/images/:id", h.deleteImage)
 	v1.DELETE("/docs/:id", h.deleteDoc)
 	v1.DELETE("/links/:id", h.deleteLink)
+	v1.GET("/capsules/:id", h.getCapsule)
+	v1.PATCH("/capsules/:id", h.updateCapsule)
+	v1.POST("/capsules/:id/usages", h.recordCapsuleUsage)
 
 	// Mount the bundled UI last so /api/* and /healthz keep their handlers.
 	if uiFS, ok := webfs.FS(); ok {
@@ -207,6 +214,140 @@ func (h *Handler) listProjects(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	writeJSON(c, http.StatusOK, map[string]any{"projects": ps})
+}
+
+type createCapsuleReq struct {
+	SourceTaskID string   `json:"source_task_id"`
+	Title        string   `json:"title"`
+	Summary      string   `json:"summary"`
+	Scope        string   `json:"scope"`
+	Evidence     string   `json:"evidence"`
+	Labels       []string `json:"labels"`
+	Fingerprints []string `json:"fingerprints"`
+	Producer     string   `json:"producer"`
+}
+
+type updateCapsuleReq struct {
+	Title        *string   `json:"title,omitempty"`
+	Summary      *string   `json:"summary,omitempty"`
+	Scope        *string   `json:"scope,omitempty"`
+	Evidence     *string   `json:"evidence,omitempty"`
+	Labels       *[]string `json:"labels,omitempty"`
+	Fingerprints *[]string `json:"fingerprints,omitempty"`
+	Status       *string   `json:"status,omitempty"`
+}
+
+func (h *Handler) createCapsule(ctx context.Context, c *app.RequestContext) {
+	var req createCapsuleReq
+	if err := decodeJSON(c, &req); err != nil {
+		writeError(c, http.StatusBadRequest, err)
+		return
+	}
+	capsule, err := h.svc.CreateCapsule(ctx, service.CreateCapsuleInput{
+		ProjectID: c.Param("project"), SourceTaskID: req.SourceTaskID,
+		Title: req.Title, Summary: req.Summary, Scope: req.Scope, Evidence: req.Evidence,
+		Labels: req.Labels, Fingerprints: req.Fingerprints, Producer: req.Producer,
+	})
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusCreated, capsule)
+}
+
+func (h *Handler) listCapsules(ctx context.Context, c *app.RequestContext) {
+	limit := 0
+	if raw := strings.TrimSpace(string(c.Query("limit"))); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 {
+			writeError(c, http.StatusBadRequest, errors.New("limit must be a positive integer"))
+			return
+		}
+		limit = parsed
+	}
+	capsules, err := h.svc.ListCapsules(ctx, service.CapsuleListInput{
+		ProjectID: c.Param("project"),
+		Query:     strings.TrimSpace(string(c.Query("q"))),
+		Status:    model.CapsuleStatus(strings.TrimSpace(string(c.Query("status")))),
+		Limit:     limit,
+	})
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusOK, map[string]any{"capsules": capsules})
+}
+
+func (h *Handler) getCapsule(ctx context.Context, c *app.RequestContext) {
+	capsule, err := h.svc.GetCapsule(ctx, c.Param("id"))
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusOK, capsule)
+}
+
+func (h *Handler) updateCapsule(ctx context.Context, c *app.RequestContext) {
+	var req updateCapsuleReq
+	if err := decodeJSON(c, &req); err != nil {
+		writeError(c, http.StatusBadRequest, err)
+		return
+	}
+	var status *model.CapsuleStatus
+	if req.Status != nil {
+		value := model.CapsuleStatus(*req.Status)
+		status = &value
+	}
+	capsule, err := h.svc.UpdateCapsule(ctx, c.Param("id"), service.UpdateCapsuleInput{
+		Title: req.Title, Summary: req.Summary, Scope: req.Scope, Evidence: req.Evidence,
+		Labels: req.Labels, Fingerprints: req.Fingerprints, Status: status,
+	})
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusOK, capsule)
+}
+
+type recordCapsuleUsageReq struct {
+	TaskID  string `json:"task_id"`
+	Outcome string `json:"outcome"`
+	Notes   string `json:"notes"`
+}
+
+func (h *Handler) recordCapsuleUsage(ctx context.Context, c *app.RequestContext) {
+	var req recordCapsuleUsageReq
+	if err := decodeJSON(c, &req); err != nil {
+		writeError(c, http.StatusBadRequest, err)
+		return
+	}
+	usage, err := h.svc.RecordCapsuleUsage(ctx, service.RecordUsageInput{
+		CapsuleID: c.Param("id"), TaskID: req.TaskID,
+		Outcome: model.CapsuleOutcome(req.Outcome), Notes: req.Notes,
+	})
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusOK, usage)
+}
+
+func (h *Handler) learningMetrics(ctx context.Context, c *app.RequestContext) {
+	metrics, err := h.svc.GetLearningMetrics(ctx, c.Param("project"))
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusOK, metrics)
+}
+
+func (h *Handler) taskContext(ctx context.Context, c *app.RequestContext) {
+	snapshot, err := h.svc.GetOrCreateTaskContext(ctx, c.Param("id"))
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusOK, snapshot)
 }
 
 // ─── Task handlers ──────────────────────────────────────────────────────

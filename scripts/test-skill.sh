@@ -35,6 +35,10 @@ required_sections = {
         "### test → review",
         "### review → done",
         "## Fast path",
+        "taskline task context <id>",
+        "taskline capsule create",
+        "taskline capsule use",
+        "--producer claude-code",
     ],
     ".agents/skills/taskline-localtest/SKILL.md": [
         "### 1. Write the test FIRST",

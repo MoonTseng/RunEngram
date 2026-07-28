@@ -16,7 +16,7 @@ description: |
   project queue" and proactively drain runnable tasks to completion.
   Skip for one-off todo notes with no state, dependencies, or follow-up
   — just answer those directly.
-version: 0.17.0
+version: 0.18.0
 ---
 
 # taskline — task management for AI agents
@@ -26,6 +26,11 @@ projects and the tasks (features / bugs / docs) inside them, enforces a
 seven-state lifecycle (`pending → start → spec → dev → test → review → done`),
 models inter-task dependencies as a DAG, and answers "what's runnable
 now?".
+
+RunEngram's task protocol is tool-neutral. Codex is the default producer, but
+Claude Code and other coding agents use the same CLI, task context snapshots,
+exploration capsules, and reuse outcomes. Never fork project knowledge by AI
+vendor.
 
 **Always go through the CLI.** Don't `curl` anywhere, don't try to read
 or write the database, don't shell out to internal endpoints — even if
@@ -218,6 +223,7 @@ taskline task search --project demo fc7a0732 # short id / full id / text matches
 taskline task search --project demo "historical context" --limit 10
 taskline task get <id>
 taskline task history <id>                  # actor, operation, time, before/after
+taskline task context <id>                  # immutable task-start context + recalled memory
 
 # Mutate (PATCH semantics — only pass the flags you want changed)
 taskline task update <id> --state test
@@ -254,6 +260,19 @@ taskline task link <task-id> --url https://example.com/pr/42 --label "PR #42"
 
 # Remove a link by its id (links are returned inline on `task get`)
 taskline task unlink <link-id>
+
+# Verified engineering memory
+taskline capsule list --project demo --query webview
+taskline capsule create --project demo --source-task <id> \
+  --title "Reusable migration boundary" \
+  --summary "Migrate callers before deleting compatibility service" \
+  --scope "WebView URL service migrations" \
+  --evidence-file ./verified-evidence.md \
+  --label webview --fingerprint url-service --producer codex
+taskline capsule use <capsule-id> --task <id> --outcome helpful \
+  --notes "avoided repeated caller search"
+taskline capsule archive <capsule-id>
+taskline capsule metrics --project demo
 ```
 
 Delete returns `{"deleted": true, "id": ...}`; depend returns
@@ -352,6 +371,11 @@ more instructions:
    references a short id, previous work, or historical context, use
    `taskline task search --project <p> "<query>" --format json` to find
    the related task before relying on memory or chat history.
+   Immediately run `taskline task context <id> --format json`. This creates
+   one immutable task-start snapshot and returns up to five relevant,
+   verified exploration capsules from the same project. Read their `scope`
+   and `evidence` before using them. Do not substitute recalled knowledge for
+   current code verification.
 4. Walk the task through the stages below in order. Each stage has the
    same shape: **Trigger** (what just happened) → **Actions** (do
    these now) → **Advance** (literal CLI command to move state) →
@@ -437,6 +461,10 @@ task description or implementation notes, then continue.
   6. Create or update a `Dev Notes` task doc summarizing the
      implementation, issues encountered, and any divergence from the
      `Spec` doc with the reason.
+  7. For each recalled capsule used, record the observed result:
+     `taskline capsule use <capsule-id> --task <id> --outcome helpful|rejected|stale`.
+     Use `stale` when current code disproves once-valid knowledge. Include a
+     short note explaining evidence.
 - **Advance:** `taskline task update <id> --state test`
 - **Skip when:** never. Implementation must be ready for local
   verification before review begins.
@@ -522,8 +550,15 @@ task description or implementation notes, then continue.
 
 - **Trigger:** task is `done` after the PR was merged and verified.
 - **Actions:**
-  1. `git checkout main && git pull`
-  2. Delete the local feature branch (gh's `--delete-branch` may have
+  1. Promote reusable exploration only when evidence exists. Create one
+     focused capsule per durable finding with title, summary, applicability
+     scope, code/module fingerprints, and a Markdown evidence file containing
+     tests, commands, call-site checks, or merged change references. Use
+     `--producer codex` by default, `--producer claude-code` when running there.
+     Never promote guesses, raw chat, secrets, credentials, task-only prose,
+     or conclusions not rechecked against code.
+  2. `git checkout main && git pull`
+  3. Delete the local feature branch (gh's `--delete-branch` may have
      done this already).
 - The taskline task is already `done`; this stage is repo hygiene.
 

@@ -57,6 +57,9 @@ var schemaTaskCompletion string
 //go:embed schema/0013_task_events.sql
 var schemaTaskEvents string
 
+//go:embed schema/0014_learning_assets.sql
+var schemaLearningAssets string
+
 // schemaMigrations defines the canonical migration set, keyed by
 // monotonically increasing version. We track the last-applied version in
 // SQLite's built-in `PRAGMA user_version` and only run migrations whose
@@ -82,6 +85,7 @@ var schemaMigrations = []migration{
 	{version: 11, sql: schemaTaskAgents},
 	{version: 12, sql: schemaTaskCompletion},
 	{version: 13, sql: schemaTaskEvents},
+	{version: 14, sql: schemaLearningAssets},
 }
 
 // ErrNotFound is returned when a lookup misses.
@@ -1718,4 +1722,302 @@ func isFKErr(err error) bool {
 	}
 	msg := err.Error()
 	return strings.Contains(msg, "FOREIGN KEY constraint failed") || strings.Contains(msg, "constraint failed: FOREIGN KEY")
+}
+
+// CapsuleFilter narrows project knowledge reads.
+type CapsuleFilter struct {
+	ProjectID string
+	Query     string
+	Status    model.CapsuleStatus
+	Limit     int
+}
+
+type CapsuleUpdate struct {
+	Title        *string
+	Summary      *string
+	Scope        *string
+	Evidence     *string
+	Labels       *[]string
+	Fingerprints *[]string
+	Status       *model.CapsuleStatus
+}
+
+func (s *Store) CreateCapsule(ctx context.Context, capsule *model.ExplorationCapsule) error {
+	labels, err := normalizeLabels(capsule.Labels)
+	if err != nil {
+		return err
+	}
+	fingerprints, err := normalizeLabels(capsule.Fingerprints)
+	if err != nil {
+		return err
+	}
+	labelsJSON, _ := encodeLabels(labels)
+	fingerprintsJSON, _ := encodeLabels(fingerprints)
+	if capsule.SourceTaskID != "" {
+		var projectID string
+		err := s.db.QueryRowContext(ctx, `SELECT project_id FROM tasks WHERE id = ?`, capsule.SourceTaskID).Scan(&projectID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: source task %s", ErrNotFound, capsule.SourceTaskID)
+		}
+		if err != nil {
+			return err
+		}
+		if projectID != capsule.ProjectID {
+			return fmt.Errorf("%w: source task belongs to another project", ErrConflict)
+		}
+	}
+	capsule.ID = newID()
+	capsule.Labels = labels
+	capsule.Fingerprints = fingerprints
+	if capsule.Status == "" {
+		capsule.Status = model.CapsuleStatusActive
+	}
+	if strings.TrimSpace(capsule.Producer) == "" {
+		capsule.Producer = "codex"
+	}
+	capsule.CreatedAt = now()
+	capsule.UpdatedAt = capsule.CreatedAt
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO exploration_capsules(
+			id,project_id,source_task_id,title,summary,scope,evidence,labels,fingerprints,producer,status,created_at,updated_at
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		capsule.ID, capsule.ProjectID, capsule.SourceTaskID, capsule.Title, capsule.Summary,
+		capsule.Scope, capsule.Evidence, labelsJSON, fingerprintsJSON, capsule.Producer, capsule.Status,
+		capsule.CreatedAt, capsule.UpdatedAt,
+	)
+	if isFKErr(err) {
+		return fmt.Errorf("%w: project %s", ErrNotFound, capsule.ProjectID)
+	}
+	return err
+}
+
+func (s *Store) GetCapsule(ctx context.Context, id string) (*model.ExplorationCapsule, error) {
+	row := s.db.QueryRowContext(ctx, capsuleSelectSQL+` WHERE c.id = ? GROUP BY c.id`, id)
+	return scanCapsule(row)
+}
+
+func (s *Store) ListCapsules(ctx context.Context, filter CapsuleFilter) ([]model.ExplorationCapsule, error) {
+	if filter.ProjectID == "" {
+		return nil, errors.New("ListCapsules: ProjectID required")
+	}
+	query := capsuleSelectSQL + ` WHERE c.project_id = ?`
+	args := []any{filter.ProjectID}
+	if filter.Status != "" {
+		query += ` AND c.status = ?`
+		args = append(args, filter.Status)
+	}
+	if q := strings.TrimSpace(filter.Query); q != "" {
+		query += ` AND (LOWER(c.title) LIKE LOWER(?) OR LOWER(c.summary) LIKE LOWER(?) OR LOWER(c.scope) LIKE LOWER(?) OR LOWER(c.labels) LIKE LOWER(?) OR LOWER(c.fingerprints) LIKE LOWER(?))`
+		like := "%" + q + "%"
+		args = append(args, like, like, like, like, like)
+	}
+	query += ` GROUP BY c.id ORDER BY c.updated_at DESC, c.id ASC`
+	if filter.Limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, filter.Limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]model.ExplorationCapsule, 0)
+	for rows.Next() {
+		capsule, err := scanCapsule(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *capsule)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) UpdateCapsule(ctx context.Context, id string, update CapsuleUpdate) (*model.ExplorationCapsule, error) {
+	current, err := s.GetCapsule(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if update.Title != nil {
+		current.Title = *update.Title
+	}
+	if update.Summary != nil {
+		current.Summary = *update.Summary
+	}
+	if update.Scope != nil {
+		current.Scope = *update.Scope
+	}
+	if update.Evidence != nil {
+		current.Evidence = *update.Evidence
+	}
+	if update.Labels != nil {
+		current.Labels, err = normalizeLabels(*update.Labels)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if update.Fingerprints != nil {
+		current.Fingerprints, err = normalizeLabels(*update.Fingerprints)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if update.Status != nil {
+		current.Status = *update.Status
+	}
+	labelsJSON, _ := encodeLabels(current.Labels)
+	fingerprintsJSON, _ := encodeLabels(current.Fingerprints)
+	updatedAt := now()
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE exploration_capsules
+		   SET title=?,summary=?,scope=?,evidence=?,labels=?,fingerprints=?,status=?,updated_at=?
+		 WHERE id=?`,
+		current.Title, current.Summary, current.Scope, current.Evidence, labelsJSON,
+		fingerprintsJSON, current.Status, updatedAt, id)
+	if err != nil {
+		return nil, err
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		return nil, ErrNotFound
+	}
+	return s.GetCapsule(ctx, id)
+}
+
+func (s *Store) GetContextSnapshot(ctx context.Context, taskID string) (*model.ContextSnapshot, error) {
+	var id, projectID, payload string
+	var createdAt int64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id,project_id,payload,created_at FROM context_snapshots WHERE task_id=?`, taskID,
+	).Scan(&id, &projectID, &payload, &createdAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	var snapshot model.ContextSnapshot
+	if err := json.Unmarshal([]byte(payload), &snapshot); err != nil {
+		return nil, fmt.Errorf("decode context snapshot: %w", err)
+	}
+	snapshot.ID, snapshot.TaskID, snapshot.ProjectID, snapshot.CreatedAt = id, taskID, projectID, createdAt
+	return &snapshot, nil
+}
+
+func (s *Store) CreateContextSnapshot(ctx context.Context, snapshot *model.ContextSnapshot) (*model.ContextSnapshot, error) {
+	snapshot.ID = newID()
+	snapshot.CreatedAt = now()
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("encode context snapshot: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO context_snapshots(id,task_id,project_id,payload,created_at)
+		VALUES(?,?,?,?,?)
+		ON CONFLICT(task_id) DO NOTHING`,
+		snapshot.ID, snapshot.TaskID, snapshot.ProjectID, string(payload), snapshot.CreatedAt)
+	if isFKErr(err) {
+		return nil, fmt.Errorf("%w: project %s", ErrNotFound, snapshot.ProjectID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.GetContextSnapshot(ctx, snapshot.TaskID)
+}
+
+func (s *Store) UpsertCapsuleUsage(ctx context.Context, usage *model.CapsuleUsage) (*model.CapsuleUsage, error) {
+	nowMs := now()
+	usage.ID = newID()
+	usage.CreatedAt, usage.UpdatedAt = nowMs, nowMs
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO capsule_usages(id,capsule_id,task_id,outcome,notes,created_at,updated_at)
+		VALUES(?,?,?,?,?,?,?)
+		ON CONFLICT(capsule_id,task_id) DO UPDATE SET
+		  outcome=excluded.outcome,
+		  notes=excluded.notes,
+		  updated_at=excluded.updated_at`,
+		usage.ID, usage.CapsuleID, usage.TaskID, usage.Outcome, usage.Notes, nowMs, nowMs)
+	if isFKErr(err) {
+		return nil, fmt.Errorf("%w: capsule %s", ErrNotFound, usage.CapsuleID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id,capsule_id,task_id,outcome,notes,created_at,updated_at
+		  FROM capsule_usages WHERE capsule_id=? AND task_id=?`, usage.CapsuleID, usage.TaskID)
+	var out model.CapsuleUsage
+	if err := row.Scan(&out.ID, &out.CapsuleID, &out.TaskID, &out.Outcome, &out.Notes, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (s *Store) GetLearningMetrics(ctx context.Context, projectID string) (*model.LearningMetrics, error) {
+	var metrics model.LearningMetrics
+	err := s.db.QueryRowContext(ctx, `
+		SELECT
+		  COUNT(DISTINCT c.id),
+		  COUNT(DISTINCT CASE WHEN c.status='active' THEN c.id END),
+		  COUNT(DISTINCT cs.task_id),
+		  COUNT(DISTINCT u.task_id),
+		  COUNT(DISTINCT CASE WHEN u.outcome='helpful' THEN u.id END),
+		  COUNT(DISTINCT CASE WHEN u.outcome='rejected' THEN u.id END),
+		  COUNT(DISTINCT CASE WHEN c.status='stale' THEN c.id END)
+		FROM projects p
+		LEFT JOIN exploration_capsules c ON c.project_id=p.id
+		LEFT JOIN context_snapshots cs ON cs.project_id=p.id
+		LEFT JOIN capsule_usages u ON u.capsule_id=c.id
+		WHERE p.id=?`, projectID,
+	).Scan(&metrics.CapsuleCount, &metrics.ActiveCapsuleCount, &metrics.SnapshotTaskCount,
+		&metrics.ReusedTaskCount, &metrics.HelpfulCount, &metrics.RejectedCount, &metrics.StaleCount)
+	if err != nil {
+		return nil, err
+	}
+	denominator := metrics.HelpfulCount + metrics.RejectedCount
+	if denominator > 0 {
+		metrics.HelpfulRate = float64(metrics.HelpfulCount) / float64(denominator)
+	}
+	return &metrics, nil
+}
+
+const capsuleSelectSQL = `
+	SELECT c.id,c.project_id,c.source_task_id,c.title,c.summary,c.scope,c.evidence,
+	       c.labels,c.fingerprints,c.producer,c.status,c.created_at,c.updated_at,
+	       COUNT(u.id),
+	       SUM(CASE WHEN u.outcome='helpful' THEN 1 ELSE 0 END),
+	       SUM(CASE WHEN u.outcome='rejected' THEN 1 ELSE 0 END)
+	  FROM exploration_capsules c
+	  LEFT JOIN capsule_usages u ON u.capsule_id=c.id`
+
+type capsuleScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanCapsule(scanner capsuleScanner) (*model.ExplorationCapsule, error) {
+	var capsule model.ExplorationCapsule
+	var labelsJSON, fingerprintsJSON string
+	var helpful, rejected sql.NullInt64
+	err := scanner.Scan(
+		&capsule.ID, &capsule.ProjectID, &capsule.SourceTaskID, &capsule.Title,
+		&capsule.Summary, &capsule.Scope, &capsule.Evidence, &labelsJSON,
+		&fingerprintsJSON, &capsule.Producer, &capsule.Status, &capsule.CreatedAt, &capsule.UpdatedAt,
+		&capsule.UseCount, &helpful, &rejected,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	capsule.Labels, err = decodeLabels(labelsJSON)
+	if err != nil {
+		return nil, err
+	}
+	capsule.Fingerprints, err = decodeLabels(fingerprintsJSON)
+	if err != nil {
+		return nil, err
+	}
+	capsule.HelpfulCount = int(helpful.Int64)
+	capsule.RejectedCount = int(rejected.Int64)
+	return &capsule, nil
 }

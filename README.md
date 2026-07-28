@@ -15,9 +15,9 @@ Claude Code, Cursor, or your existing engineering SOP. It gives those tools
 one shared source of work truth and a path for turning verified experience into
 context the next task can use.
 
-> **Status: early alpha.** This repository currently ships the local task
-> execution kernel. Verified exploration caching, learning promotion, and
-> learning-lift metrics are the next product layer.
+> **Status: early alpha.** Local task execution, immutable context snapshots,
+> verified Exploration Capsules, recall, and observed reuse metrics work now.
+> Evidence-to-rule promotion remains roadmap work.
 
 ## Why RunEngram
 
@@ -51,23 +51,30 @@ work context -> agent run -> verified evidence -> learning -> next run
   completion.
 - **Human visibility:** Kanban and dependency-graph views.
 - **Bilingual UI:** English and Simplified Chinese.
+- **Immutable Context Snapshot:** each claimed task freezes its starting input
+  and recalled project knowledge on first read.
+- **Exploration Capsules:** verified findings retain source task, scope,
+  evidence, fingerprints, and producer (`codex`, `claude-code`, or another
+  tool).
+- **Learning visibility:** Knowledge view and CLI show reused tasks, helpful
+  outcomes, rejected knowledge, and helpful rate without inventing time saved.
 
 The alpha binaries still use the names `taskline-server` and `taskline`. They
 are RunEngram's task execution kernel. The public command names will be unified
 before 1.0.
 
-## Where RunEngram is going
+## Learning loop
 
 The next milestone improves future work instead of adding more board features:
 
-1. **Context Snapshot** freezes requirements, constraints, dependencies, and
-   knowledge versions when work starts.
-2. **Exploration Capsule** preserves verified code entry points, call paths,
-   commands, negative paths, and freshness fingerprints.
-3. **Evidence to Rule** promotes repeated lessons into project knowledge,
+1. **Context Snapshot** freezes task input and recalled capsules when work
+   starts.
+2. **Exploration Capsule** preserves verified findings, scope, commands,
+   evidence, and freshness fingerprints.
+3. **Observed Reuse** records whether recalled memory was helpful, rejected, or
+   stale.
+4. **Evidence to Rule** will promote repeated lessons into project knowledge,
    skills, tests, or workflow gates.
-4. **Learning Lift** measures search, explanation, rework, and manual steps
-   saved by reused knowledge.
 5. **Tool-agnostic Protocol** lets different coding agents and SOPs participate
    in the same learning loop.
 
@@ -119,6 +126,8 @@ export TASKLINE_PROJECT=demo
   --type feature \
   --priority 1
 ./dist/taskline task next --claim
+TASK_ID="<claimed-task-id>"
+./dist/taskline task context "$TASK_ID"
 ```
 
 `task next` previews work by default. An agent must use `--claim` before
@@ -149,9 +158,22 @@ taskline register --name your-agent-name
 taskline status
 ```
 
-Codex or another compatible agent can now follow
+Codex (default), Claude Code, or another CLI-capable agent can now follow
 [`skills/taskline-management/SKILL.md`](./skills/taskline-management/SKILL.md)
-to claim, resume, update, and verify work.
+to claim, resume, update, verify, and reuse engineering memory. The installer
+links the same public skill into both `~/.agents/skills/` and
+`~/.claude/skills/`.
+
+```bash
+taskline task context <task-id>
+taskline capsule list --project your-project --query webview
+taskline capsule create --project your-project --source-task <task-id> \
+  --title "Reusable boundary" --summary "Verified finding" \
+  --scope "Affected module" --evidence-file ./evidence.md \
+  --fingerprint module-name --producer codex
+taskline capsule use <capsule-id> --task <task-id> --outcome helpful
+taskline capsule metrics --project your-project
+```
 
 ## Architecture
 
@@ -162,15 +184,15 @@ flowchart LR
     API["RunEngram API"]
     Task["Task state, dependencies, claims, history"]
     Evidence["Verification evidence"]
-    Learning["Reusable engineering memory<br/>next milestone"]
+    Learning["Context snapshots + Exploration Capsules"]
     Store[("SQLite + Markdown")]
 
     Human --> API
     Agent --> API
     API --> Task
     Task --> Evidence
-    Evidence -.promote.-> Learning
-    Learning -.inject into next task.-> Agent
+    Evidence --> Learning
+    Learning --> Agent
     Task --> Store
     Evidence --> Store
     Learning --> Store

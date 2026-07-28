@@ -140,6 +140,83 @@ type TaskEvent struct {
 	CreatedAt int64          `json:"created_at"`
 }
 
+type CapsuleStatus string
+
+const (
+	CapsuleStatusActive   CapsuleStatus = "active"
+	CapsuleStatusStale    CapsuleStatus = "stale"
+	CapsuleStatusArchived CapsuleStatus = "archived"
+)
+
+func (s CapsuleStatus) Valid() bool {
+	return s == CapsuleStatusActive || s == CapsuleStatusStale || s == CapsuleStatusArchived
+}
+
+type CapsuleOutcome string
+
+const (
+	CapsuleOutcomeUsed     CapsuleOutcome = "used"
+	CapsuleOutcomeHelpful  CapsuleOutcome = "helpful"
+	CapsuleOutcomeRejected CapsuleOutcome = "rejected"
+	CapsuleOutcomeStale    CapsuleOutcome = "stale"
+)
+
+func (o CapsuleOutcome) Valid() bool {
+	return o == CapsuleOutcomeUsed || o == CapsuleOutcomeHelpful ||
+		o == CapsuleOutcomeRejected || o == CapsuleOutcomeStale
+}
+
+// ExplorationCapsule is verified, reusable engineering knowledge.
+type ExplorationCapsule struct {
+	ID            string        `json:"id"`
+	ProjectID     string        `json:"project_id"`
+	SourceTaskID  string        `json:"source_task_id"`
+	Title         string        `json:"title"`
+	Summary       string        `json:"summary"`
+	Scope         string        `json:"scope"`
+	Evidence      string        `json:"evidence"`
+	Labels        []string      `json:"labels"`
+	Fingerprints  []string      `json:"fingerprints"`
+	Producer      string        `json:"producer"`
+	Status        CapsuleStatus `json:"status"`
+	UseCount      int           `json:"use_count"`
+	HelpfulCount  int           `json:"helpful_count"`
+	RejectedCount int           `json:"rejected_count"`
+	CreatedAt     int64         `json:"created_at"`
+	UpdatedAt     int64         `json:"updated_at"`
+}
+
+// ContextSnapshot freezes task input and suggested memory at first read.
+type ContextSnapshot struct {
+	ID                string               `json:"id"`
+	TaskID            string               `json:"task_id"`
+	ProjectID         string               `json:"project_id"`
+	Task              Task                 `json:"task"`
+	SuggestedCapsules []ExplorationCapsule `json:"suggested_capsules"`
+	CreatedAt         int64                `json:"created_at"`
+}
+
+type CapsuleUsage struct {
+	ID        string         `json:"id"`
+	CapsuleID string         `json:"capsule_id"`
+	TaskID    string         `json:"task_id"`
+	Outcome   CapsuleOutcome `json:"outcome"`
+	Notes     string         `json:"notes"`
+	CreatedAt int64          `json:"created_at"`
+	UpdatedAt int64          `json:"updated_at"`
+}
+
+type LearningMetrics struct {
+	CapsuleCount       int     `json:"capsule_count"`
+	ActiveCapsuleCount int     `json:"active_capsule_count"`
+	SnapshotTaskCount  int     `json:"snapshot_task_count"`
+	ReusedTaskCount    int     `json:"reused_task_count"`
+	HelpfulCount       int     `json:"helpful_count"`
+	RejectedCount      int     `json:"rejected_count"`
+	StaleCount         int     `json:"stale_count"`
+	HelpfulRate        float64 `json:"helpful_rate"`
+}
+
 // Link is a URL attached to a task — typically a spec doc, PR, technical
 // note, or other artifact the agent wants to keep alongside the task.
 type Link struct {

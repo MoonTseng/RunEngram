@@ -93,6 +93,38 @@ export interface TaskEvent {
   created_at: number;
 }
 
+export type CapsuleStatus = "active" | "stale" | "archived";
+
+export interface ExplorationCapsule {
+  id: string;
+  project_id: string;
+  source_task_id: string;
+  title: string;
+  summary: string;
+  scope: string;
+  evidence: string;
+  labels: string[];
+  fingerprints: string[];
+  producer: string;
+  status: CapsuleStatus;
+  use_count: number;
+  helpful_count: number;
+  rejected_count: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface LearningMetrics {
+  capsule_count: number;
+  active_capsule_count: number;
+  snapshot_task_count: number;
+  reused_task_count: number;
+  helpful_count: number;
+  rejected_count: number;
+  stale_count: number;
+  helpful_rate: number;
+}
+
 export interface TaskImage {
   id: string;
   task_id: string;
@@ -178,6 +210,31 @@ export async function listTasks(projectIdOrName: string): Promise<Task[]> {
     `/api/v1/projects/${encodeURIComponent(projectIdOrName)}/tasks`
   );
   return r.tasks ?? [];
+}
+
+export async function listCapsules(
+  projectIdOrName: string,
+  query = "",
+  status: CapsuleStatus | "" = "active"
+): Promise<ExplorationCapsule[]> {
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  if (status) params.set("status", status);
+  const suffix = params.size > 0 ? `?${params.toString()}` : "";
+  const response = await request<{ capsules: ExplorationCapsule[] }>(
+    "GET",
+    `/api/v1/projects/${encodeURIComponent(projectIdOrName)}/capsules${suffix}`
+  );
+  return response.capsules ?? [];
+}
+
+export async function getLearningMetrics(
+  projectIdOrName: string
+): Promise<LearningMetrics> {
+  return request<LearningMetrics>(
+    "GET",
+    `/api/v1/projects/${encodeURIComponent(projectIdOrName)}/learning-metrics`
+  );
 }
 
 export async function searchTasks(

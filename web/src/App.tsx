@@ -4,6 +4,7 @@ import { useQueryState } from "nuqs";
 import { Sidebar } from "./components/Sidebar";
 import { KanbanBoard } from "./components/KanbanBoard";
 import { GraphView } from "./components/GraphView";
+import { KnowledgeView } from "./components/KnowledgeView";
 import { CreateTaskButton } from "./components/CreateTaskButton";
 import { TaskEditor } from "./components/TaskEditor";
 import { TaskSearchDialog } from "./components/TaskSearchDialog";
@@ -11,7 +12,7 @@ import { useProjects, useTasks } from "./hooks/queries";
 import type { Project, Task } from "./lib/api";
 import { I18nProvider, useI18n } from "./lib/i18n";
 
-type View = "kanban" | "graph";
+type View = "kanban" | "graph" | "knowledge";
 
 export default function App() {
   return (
@@ -239,11 +240,9 @@ function ProjectWorkspace({
       </header>
       <section className="relative flex-1 overflow-hidden bg-[var(--tl-bg)]">
         <div className="box-border h-full">
-          {view === "kanban" ? (
-            <KanbanBoard project={project} />
-          ) : (
-            <GraphView project={project} />
-          )}
+          {view === "kanban" && <KanbanBoard project={project} />}
+          {view === "graph" && <GraphView project={project} />}
+          {view === "knowledge" && <KnowledgeView project={project} />}
         </div>
       </section>
       {searchOpen && (
@@ -269,7 +268,7 @@ function ProjectWorkspace({
 }
 
 function parseViewKey(value: string | null): View {
-  return value === "graph" ? "graph" : "kanban";
+  return value === "graph" || value === "knowledge" ? value : "kanban";
 }
 
 function useMediaQuery(query: string) {
@@ -299,6 +298,7 @@ function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => voi
   const opts: { id: View; label: string }[] = [
     { id: "kanban", label: t("views.kanban") },
     { id: "graph", label: t("views.graph") },
+    { id: "knowledge", label: t("views.knowledge") },
   ];
   return (
     <div

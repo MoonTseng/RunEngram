@@ -11,8 +11,8 @@ RunEngram 把研发任务、Agent 执行、验证证据和可复用项目上下�
 工具共享同一份任务事实，并逐步把验证过的经验转化为下一次开发可直接使用
 的项目知识。
 
-> **项目状态：早期 Alpha。** 当前仓库已经提供本地任务执行内核；
-> 可验证探索缓存、经验晋升和学习效果指标属于下一阶段能力。
+> **项目状态：早期 Alpha。** 本地任务执行、不可变上下文快照、可验证
+> Exploration Capsule、自动召回和复用效果指标已经可用；经验晋升为规则仍在路线图中。
 
 ## 为什么需要 RunEngram
 
@@ -41,18 +41,21 @@ RunEngram 的目标不是再做一个项目管理看板，而是建立可验证�
 - GitHub PR、Review 和 CI 证据门禁；
 - 看板与依赖图；
 - Web UI 中英文切换。
+- 任务领取后首次读取会生成不可变 Context Snapshot，冻结任务输入和召回知识；
+- Exploration Capsule 保存来源任务、适用范围、验证证据、代码指纹和生产工具；
+- “工程记忆”视图与 CLI 展示复用任务数、有效/无效结果和有效复用率。
 
 当前 Alpha 版本的二进制仍使用 `taskline-server` 和 `taskline` 命令名。
 它们是 RunEngram 的任务执行内核；正式版前会完成统一命名迁移。
 
-## RunEngram 的产品方向
+## RunEngram 的学习闭环
 
 下一阶段重点不是增加更多看板功能，而是让任务执行产生可复用收益：
 
-1. **Context Snapshot**：任务开始时冻结需求、约束、依赖和知识版本；
-2. **Exploration Capsule**：保存经过验证的代码入口、调用链、命令和失败路径；
-3. **Evidence to Rule**：把重复出现的经验晋升为项目知识、Skill、测试或门禁；
-4. **Learning Lift**：衡量复用知识后节省的搜索、解释、返工和人工步骤；
+1. **Context Snapshot**：任务开始时冻结输入与本次召回的工程记忆；
+2. **Exploration Capsule**：保存验证过的结论、范围、命令、证据和代码指纹；
+3. **Observed Reuse**：记录召回知识是有效、无效还是已经过期；
+4. **Evidence to Rule**：后续把重复经验晋升为项目知识、Skill、测试或门禁；
 5. **Tool-agnostic Protocol**：允许不同 Agent 和研发 SOP 接入同一学习循环。
 
 原始聊天记录不是可信知识。进入项目知识前，经验必须保留来源、适用范围、
@@ -102,6 +105,8 @@ export TASKLINE_PROJECT=demo
   --type feature \
   --priority 1
 ./dist/taskline task next --claim
+TASK_ID="<领取到的任务 ID>"
+./dist/taskline task context "$TASK_ID"
 ```
 
 `task next` 默认只预览。Agent 真正开始执行前必须使用 `--claim`。
@@ -131,9 +136,21 @@ taskline register --name your-agent-name
 taskline status
 ```
 
-然后可以让 Codex 或其他 Agent 按照
+然后可以让 Codex（默认）、Claude Code 或其他可调用 CLI 的 Agent 按照
 [`skills/taskline-management/SKILL.md`](./skills/taskline-management/SKILL.md)
-领取和推进任务。
+领取、推进、验证并复用工程记忆。安装脚本会把同一个 Skill 链接到
+`~/.agents/skills/` 与 `~/.claude/skills/`。
+
+```bash
+taskline task context <任务 ID>
+taskline capsule list --project your-project --query webview
+taskline capsule create --project your-project --source-task <任务 ID> \
+  --title "可复用边界" --summary "已经验证的结论" \
+  --scope "适用模块" --evidence-file ./evidence.md \
+  --fingerprint module-name --producer codex
+taskline capsule use <胶囊 ID> --task <任务 ID> --outcome helpful
+taskline capsule metrics --project your-project
+```
 
 更完整的操作说明见[中文使用指南](./使用说明.md)。
 
@@ -146,15 +163,15 @@ flowchart LR
     API["RunEngram API"]
     Task["任务状态、依赖、领取与历史"]
     Evidence["验证证据"]
-    Learning["可复用研发记忆<br/>下一阶段"]
+    Learning["上下文快照 + Exploration Capsule"]
     Store[("SQLite + Markdown")]
 
     Human --> API
     Agent --> API
     API --> Task
     Task --> Evidence
-    Evidence -.提炼.-> Learning
-    Learning -.注入下一任务.-> Agent
+    Evidence --> Learning
+    Learning --> Agent
     Task --> Store
     Evidence --> Store
     Learning --> Store

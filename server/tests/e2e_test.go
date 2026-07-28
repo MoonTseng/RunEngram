@@ -1134,6 +1134,71 @@ func TestUnknownProjectIs404(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, st)
 }
 
+func TestExplorationCapsuleLearningLoopAtAPI(t *testing.T) {
+	base, stop := startServer(t)
+	defer stop()
+	token := registerAgent(t, base, "learning-agent")
+	jsonReq(t, "POST", base+"/api/v1/projects", map[string]any{"name": "learning-api"}, &project{})
+
+	var created task
+	st := jsonReq(t, "POST", base+"/api/v1/projects/learning-api/tasks",
+		map[string]any{
+			"title": "Refactor webview url-service", "description": "reuse migration knowledge",
+			"type": "feature", "auto_start": true, "labels": []string{"webview"},
+		}, &created)
+	require.Equal(t, http.StatusCreated, st)
+	st = jsonReqWithToken(t, "POST", base+"/api/v1/tasks/"+created.ID+"/claim",
+		map[string]any{"lease": "1h"}, &created, token)
+	require.Equal(t, http.StatusOK, st)
+
+	var capsule struct {
+		ID       string `json:"id"`
+		Producer string `json:"producer"`
+	}
+	st = jsonReq(t, "POST", base+"/api/v1/projects/learning-api/capsules",
+		map[string]any{
+			"source_task_id": created.ID,
+			"title":          "WebView migration boundary",
+			"summary":        "Migrate callers before deleting compatibility service",
+			"scope":          "webview url-service",
+			"evidence":       "caller inventory and tests passed",
+			"labels":         []string{"webview"},
+			"fingerprints":   []string{"url-service"},
+			"producer":       "claude-code",
+		}, &capsule)
+	require.Equal(t, http.StatusCreated, st)
+	require.NotEmpty(t, capsule.ID)
+	require.Equal(t, "claude-code", capsule.Producer)
+
+	var first, second struct {
+		ID                string `json:"id"`
+		SuggestedCapsules []struct {
+			ID string `json:"id"`
+		} `json:"suggested_capsules"`
+	}
+	st = jsonReq(t, "GET", base+"/api/v1/tasks/"+created.ID+"/context", nil, &first)
+	require.Equal(t, http.StatusOK, st)
+	require.Len(t, first.SuggestedCapsules, 1)
+	require.Equal(t, capsule.ID, first.SuggestedCapsules[0].ID)
+	st = jsonReq(t, "GET", base+"/api/v1/tasks/"+created.ID+"/context", nil, &second)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, first.ID, second.ID)
+
+	st = jsonReq(t, "POST", base+"/api/v1/capsules/"+capsule.ID+"/usages",
+		map[string]any{"task_id": created.ID, "outcome": "helpful", "notes": "saved exploration"}, nil)
+	require.Equal(t, http.StatusOK, st)
+	var metrics struct {
+		ReusedTaskCount int     `json:"reused_task_count"`
+		HelpfulCount    int     `json:"helpful_count"`
+		HelpfulRate     float64 `json:"helpful_rate"`
+	}
+	st = jsonReq(t, "GET", base+"/api/v1/projects/learning-api/learning-metrics", nil, &metrics)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, 1, metrics.ReusedTaskCount)
+	require.Equal(t, 1, metrics.HelpfulCount)
+	require.Equal(t, 1.0, metrics.HelpfulRate)
+}
+
 func init() {
 	// Quiet Hertz banner on test stdout; failures still print stack traces.
 	_ = fmt.Sprintln
