@@ -43,6 +43,7 @@ required_sections = {
         "## Prompt shorthand",
         "### Automatic project bootstrap",
         "git remote get-url origin",
+        "git hash-object --stdin",
         "taskline-management <requirement>",
         "taskline-management run <requirement>",
         "taskline-management spec <requirement>",

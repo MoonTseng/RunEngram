@@ -140,6 +140,7 @@ codex plugin list
 `taskline-management 【需求描述】`，或从 Skill 列表选择
 **Taskline Management**。它是 Skill 触发词，不是终端命令。首次在 Git
 工程中使用时，RunEngram 会读取仓库名并自动创建对应项目，不再询问项目名。
+首次领取任务时也会自动注册当前工作区的 Codex 身份，不再询问代理名称。
 升级：
 
 ```bash

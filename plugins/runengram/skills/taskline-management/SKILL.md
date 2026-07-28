@@ -64,7 +64,8 @@ export `TASKLINE_PROJECT` for the session or pass `--project` on every
 project-scoped command. Before doing queue work, make sure
 the current working directory has a valid agent identity by running
 `taskline status --format json`. Register only when it reports
-`"registered": false`, then run status again. If status fails because
+`"registered": false`; use the automatic Agent bootstrap below instead of
+asking for a name, then run status again. If status fails because
 the local identity or token is invalid, stop and fix that identity
 instead of registering another name over it. Then keep pulling
 `taskline task next --claim --format json` after each completed task
@@ -123,10 +124,27 @@ documentation-only request; otherwise use `feature`. Use priority `0` unless the
 prompt supplies a priority.
 
 Create-only and pending modes do not need an agent identity. Before `run`,
-`spec`, or bare queue-drain mode, run `taskline status --format json`. Register
-only when it reports `registered=false`; if no agent name was supplied and no
-valid identity exists, ask only for the agent name. Never infer or replace an
-identity silently.
+`spec`, or bare queue-drain mode, run `taskline status --format json` and follow
+the automatic Agent bootstrap below.
+
+### Automatic Agent bootstrap
+
+When status succeeds with `"registered": false`, create a stable,
+workspace-scoped Codex identity without asking:
+
+```bash
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
+user_name="$(id -un 2>/dev/null || whoami)"
+workspace_hash="$(printf '%s' "$repo_root" | git hash-object --stdin | cut -c1-8)"
+taskline register --name "codex-${user_name}-${workspace_hash}"
+taskline status --format json
+```
+
+The path hash prevents one checkout from rotating another checkout's token on
+a shared server. Auto-register only after status explicitly reports
+`registered=false`. If status reports an invalid or stale existing identity,
+repair it; never replace it. Ask for a name only when automatic registration
+itself fails.
 
 For `run` and `spec`, claim the ID returned by `taskline task create` with
 `taskline task claim <id>`; do not use `task next --claim`, because another

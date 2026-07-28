@@ -154,7 +154,8 @@ starts a loopback-only service, and keeps project data local. After setup,
 type `taskline-management <request>` or select **Taskline Management** from the
 Skill picker. It is a Skill trigger, not a shell command. On first use inside
 a Git repository, RunEngram derives the repository name and creates the
-matching project automatically. To update:
+matching project automatically. When execution first needs a claim, it also
+registers a workspace-scoped Codex identity automatically. To update:
 
 ```bash
 codex plugin marketplace upgrade runengram
