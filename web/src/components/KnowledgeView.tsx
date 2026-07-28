@@ -1,328 +1,147 @@
-import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, CheckCircle2, Database, Search, Users } from "lucide-react";
-
-import type {
-  CapsuleStatus,
-  LearningNoteKind,
-  LearningNoteStatus,
-  Project,
-} from "../lib/api";
+import { Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import {
   getLearningMetrics,
   listCapsules,
   listLearningNotes,
+  type CapsuleStatus,
+  type ExplorationCapsule,
+  type Project,
 } from "../lib/api";
 import { useI18n } from "../lib/i18n";
+import { MemoryCandidates } from "./MemoryCandidates";
+import { MemoryDetail } from "./MemoryDetail";
+import { MemoryList } from "./MemoryList";
+import { MemoryMetrics } from "./MemoryMetrics";
+
+type MemoryTab = "verified" | "pending" | "stale";
 
 export function KnowledgeView({ project }: { project: Project }) {
   const { t } = useI18n();
+  const [tab, setTab] = useState<MemoryTab>("verified");
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<CapsuleStatus | "">("active");
-  const [noteStatus, setNoteStatus] = useState<LearningNoteStatus | "">("pending");
+  const status: CapsuleStatus = tab === "stale" ? "stale" : "active";
   const capsules = useQuery({
     queryKey: ["capsules", project.id, query, status],
     queryFn: () => listCapsules(project.id, query, status),
+    enabled: tab !== "pending",
   });
   const notes = useQuery({
-    queryKey: ["learning-notes", project.id, noteStatus],
-    queryFn: () =>
-      listLearningNotes(project.id, { status: noteStatus, limit: 100 }),
+    queryKey: ["learning-notes", project.id, "pending"],
+    queryFn: () => listLearningNotes(project.id, { status: "pending", limit: 100 }),
+    enabled: tab === "pending",
   });
   const metrics = useQuery({
     queryKey: ["learning-metrics", project.id],
     queryFn: () => getLearningMetrics(project.id),
   });
+  const ordered = useMemo(
+    () =>
+      [...(capsules.data ?? [])].sort((left, right) => {
+        const leftFeedback = left.helpful_count + left.rejected_count;
+        const rightFeedback = right.helpful_count + right.rejected_count;
+        const leftRate = leftFeedback ? left.helpful_count / leftFeedback : 0;
+        const rightRate = rightFeedback ? right.helpful_count / rightFeedback : 0;
+        return rightRate - leftRate || right.use_count - left.use_count || right.updated_at - left.updated_at;
+      }),
+    [capsules.data]
+  );
+  const [selected, setSelected] = useState<ExplorationCapsule | null>(null);
 
-  const noteKindLabel = (kind: LearningNoteKind) =>
-    kind === "human-correction"
-      ? t("knowledge.humanCorrection")
-      : t("knowledge.agentRecovery");
+  useEffect(() => {
+    setSelected((current) => {
+      if (current && ordered.some((capsule) => capsule.id === current.id)) return current;
+      return ordered[0] ?? null;
+    });
+  }, [ordered]);
+
+  const tabs: { id: MemoryTab; label: string; count: number }[] = [
+    { id: "verified", label: t("knowledge.verified"), count: metrics.data?.active_capsule_count ?? 0 },
+    { id: "pending", label: t("knowledge.pendingReview"), count: metrics.data?.pending_note_count ?? 0 },
+    { id: "stale", label: t("knowledge.needsRevalidation"), count: metrics.data?.stale_count ?? 0 },
+  ];
 
   return (
-    <div className="h-full overflow-y-auto p-6 max-sm:p-3">
-      <div className="mx-auto flex max-w-6xl flex-col gap-5">
-        <section className="rounded-xl border border-[var(--tl-outline)] bg-[var(--tl-surface)] p-5 shadow-[var(--tl-shadow-paper)]">
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--tl-primary)]">
-            Engineering Memory
-          </p>
-          <h1 className="mt-2 text-2xl font-bold text-[var(--tl-ink)]">
-            {t("knowledge.title")}
-          </h1>
-          <p className="mt-2 max-w-3xl text-[15px] leading-7 text-[var(--tl-ink-muted)]">
-            {t("knowledge.subtitle")}
-          </p>
-        </section>
+    <div className="h-full overflow-y-auto p-5 lg:p-7">
+      <div className="mx-auto flex max-w-[1440px] flex-col gap-5">
+        <header>
+          <p className="eyebrow">ENGINEERING MEMORY</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight">{t("knowledge.title")}</h1>
+          <p className="mt-2 max-w-4xl text-base leading-7 text-[var(--tl-ink-muted)]">{t("knowledge.subtitle")}</p>
+        </header>
 
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Metric
-            icon={<Database size={18} />}
-            label={t("knowledge.pendingCandidates")}
-            value={metrics.data?.pending_note_count ?? 0}
-          />
-          <Metric
-            icon={<CheckCircle2 size={18} />}
-            label={t("knowledge.promotedCandidates")}
-            value={metrics.data?.promoted_note_count ?? 0}
-          />
-          <Metric
-            icon={<BookOpen size={18} />}
-            label={t("knowledge.rejectedCandidates")}
-            value={metrics.data?.rejected_note_count ?? 0}
-          />
-          <Metric
-            icon={<Users size={18} />}
-            label={t("knowledge.promotionRate")}
-            value={`${Math.round((metrics.data?.promotion_rate ?? 0) * 100)}%`}
-          />
-        </section>
+        <MemoryMetrics metrics={metrics.data} />
 
-        <section className="rounded-xl border border-[var(--tl-outline)] bg-[var(--tl-surface)] p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--tl-primary)]">
-                Agent Learning
-              </p>
-              <h2 className="mt-1 text-xl font-bold text-[var(--tl-ink)]">
-                {t("knowledge.candidates")}
-              </h2>
-            </div>
-            <select
-              aria-label={t("knowledge.candidates")}
-              value={noteStatus}
-              onChange={(event) =>
-                setNoteStatus(event.target.value as LearningNoteStatus | "")
-              }
-              className="h-11 rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-surface-raised)] px-3 text-[15px]"
-            >
-              <option value="">{t("knowledge.all")}</option>
-              <option value="pending">{t("knowledge.pendingCandidates")}</option>
-              <option value="promoted">{t("knowledge.promotedCandidates")}</option>
-              <option value="rejected">{t("knowledge.rejectedCandidates")}</option>
-            </select>
+        <section className="panel p-2">
+          <div className="flex gap-1 overflow-x-auto" role="tablist" aria-label={t("knowledge.memoryViews")}>
+            {tabs.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === item.id}
+                onClick={() => {
+                  setTab(item.id);
+                  setSelected(null);
+                }}
+                className={
+                  "inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-4 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tl-focus)] " +
+                  (tab === item.id
+                    ? "bg-[var(--tl-primary)] text-[var(--tl-primary-contrast)]"
+                    : "text-[var(--tl-ink-muted)] hover:bg-[var(--tl-bg-quiet)] hover:text-[var(--tl-ink)]")
+                }
+              >
+                {item.label}
+                <span className="rounded-full bg-[color-mix(in_srgb,var(--tl-bg)_35%,transparent)] px-2 py-0.5 text-xs">{item.count}</span>
+              </button>
+            ))}
           </div>
-
-          {notes.isLoading ? (
-            <p className="py-10 text-center text-[15px] text-[var(--tl-ink-muted)]">
-              {t("knowledge.candidatesLoading")}
-            </p>
-          ) : notes.isError ? (
-            <p className="py-10 text-center text-[15px] text-red-700">
-              {String(notes.error)}
-            </p>
-          ) : notes.data?.length === 0 ? (
-            <p className="py-10 text-center text-[15px] text-[var(--tl-ink-muted)]">
-              {t("knowledge.noCandidates")}
-            </p>
-          ) : (
-            <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              {notes.data?.map((note) => (
-                <article
-                  key={note.id}
-                  className="rounded-xl border border-[var(--tl-outline)] bg-[var(--tl-surface-raised)] p-5"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-[var(--tl-primary)]">
-                        {noteKindLabel(note.kind)} · {note.producer || "codex"}
-                      </p>
-                      <h3 className="mt-1 text-lg font-bold leading-7 text-[var(--tl-ink)]">
-                        {note.guidance}
-                      </h3>
-                    </div>
-                    <span className="rounded-full bg-[var(--tl-bg-quiet)] px-2.5 py-1 text-xs font-semibold text-[var(--tl-ink-muted)]">
-                      {note.status}
-                    </span>
-                  </div>
-                  <p className="mt-4 text-[15px] leading-7 text-[var(--tl-ink)]">
-                    <strong>{t("knowledge.trigger")}:</strong> {note.trigger}
-                  </p>
-                  {note.scope && (
-                    <p className="mt-2 text-sm leading-6 text-[var(--tl-ink-muted)]">
-                      <strong>{t("knowledge.scope")}:</strong> {note.scope}
-                    </p>
-                  )}
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {[...(note.labels ?? []), ...(note.fingerprints ?? [])].map(
-                      (value) => (
-                        <span
-                          key={value}
-                          className="rounded-md border border-[var(--tl-outline)] px-2 py-1 text-xs text-[var(--tl-ink-muted)]"
-                        >
-                          {value}
-                        </span>
-                      )
-                    )}
-                  </div>
-                  {note.evidence && (
-                    <details className="mt-4 border-t border-[var(--tl-outline)] pt-3">
-                      <summary className="cursor-pointer text-sm font-semibold text-[var(--tl-primary)]">
-                        {t("knowledge.evidence")}
-                      </summary>
-                      <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-[var(--tl-bg-quiet)] p-3 text-sm leading-6 text-[var(--tl-ink)]">
-                        {note.evidence}
-                      </pre>
-                    </details>
-                  )}
-                  {note.rejection_reason && (
-                    <p className="mt-4 border-t border-[var(--tl-outline)] pt-3 text-sm leading-6 text-red-700">
-                      <strong>{t("knowledge.rejectionReason")}:</strong>{" "}
-                      {note.rejection_reason}
-                    </p>
-                  )}
-                  <p className="mt-3 text-xs text-[var(--tl-ink-muted)]">
-                    {t("knowledge.sourceTask")}: {note.source_task_id}
-                  </p>
-                </article>
-              ))}
-            </div>
-          )}
         </section>
 
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Metric
-            icon={<Database size={18} />}
-            label={t("knowledge.active")}
-            value={metrics.data?.active_capsule_count ?? 0}
-          />
-          <Metric
-            icon={<BookOpen size={18} />}
-            label={t("knowledge.snapshots")}
-            value={metrics.data?.snapshot_task_count ?? 0}
-          />
-          <Metric
-            icon={<Users size={18} />}
-            label={t("knowledge.reusedTasks")}
-            value={metrics.data?.reused_task_count ?? 0}
-          />
-          <Metric
-            icon={<CheckCircle2 size={18} />}
-            label={t("knowledge.helpfulRate")}
-            value={`${Math.round((metrics.data?.helpful_rate ?? 0) * 100)}%`}
-          />
-        </section>
-
-        <section className="rounded-xl border border-[var(--tl-outline)] bg-[var(--tl-surface)] p-5">
-          <div className="flex flex-wrap gap-3">
-            <label className="relative min-w-64 flex-1">
-              <Search
-                className="absolute left-3 top-3 text-[var(--tl-ink-muted)]"
-                size={18}
-              />
+        {tab === "pending" ? (
+          <section>
+            {notes.isLoading ? (
+              <Loading text={t("knowledge.candidatesLoading")} />
+            ) : notes.isError ? (
+              <Loading text={String(notes.error)} error />
+            ) : (
+              <MemoryCandidates notes={notes.data ?? []} />
+            )}
+          </section>
+        ) : (
+          <>
+            <label className="relative block">
+              <Search className="absolute left-3 top-3 text-[var(--tl-ink-muted)]" size={18} />
               <input
+                aria-label={t("knowledge.search")}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={t("knowledge.search")}
-                className="h-11 w-full rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-surface-raised)] pl-10 pr-3 text-[15px] text-[var(--tl-ink)] outline-none focus:border-[var(--tl-primary)]"
+                className="h-11 w-full rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-surface)] pl-10 pr-3 text-[15px] outline-none focus:border-[var(--tl-primary)]"
               />
             </label>
-            <select
-              value={status}
-              onChange={(event) =>
-                setStatus(event.target.value as CapsuleStatus | "")
-              }
-              className="h-11 rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-surface-raised)] px-3 text-[15px]"
-            >
-              <option value="">{t("knowledge.all")}</option>
-              <option value="active">{t("knowledge.active")}</option>
-              <option value="stale">{t("knowledge.stale")}</option>
-              <option value="archived">{t("knowledge.archived")}</option>
-            </select>
-          </div>
-
-          {capsules.isLoading ? (
-            <p className="py-12 text-center text-[15px] text-[var(--tl-ink-muted)]">
-              {t("knowledge.loading")}
-            </p>
-          ) : capsules.isError ? (
-            <p className="py-12 text-center text-[15px] text-red-700">
-              {String(capsules.error)}
-            </p>
-          ) : capsules.data?.length === 0 ? (
-            <div className="py-12 text-center">
-              <p className="text-lg font-semibold text-[var(--tl-ink)]">
-                {t("knowledge.empty")}
-              </p>
-              <p className="mx-auto mt-2 max-w-2xl text-[15px] leading-7 text-[var(--tl-ink-muted)]">
-                {t("knowledge.emptyHint")}
-              </p>
-            </div>
-          ) : (
-            <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              {capsules.data?.map((capsule) => (
-                <article
-                  key={capsule.id}
-                  className="rounded-xl border border-[var(--tl-outline)] bg-[var(--tl-surface-raised)] p-5"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h2 className="text-lg font-bold leading-6 text-[var(--tl-ink)]">
-                        {capsule.title}
-                      </h2>
-                      <p className="mt-1 text-sm text-[var(--tl-ink-muted)]">
-                        {capsule.producer || "codex"} · {capsule.use_count}{" "}
-                        {t("knowledge.uses")}
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-[var(--tl-bg-quiet)] px-2.5 py-1 text-xs font-semibold text-[var(--tl-ink-muted)]">
-                      {capsule.status}
-                    </span>
-                  </div>
-                  <p className="mt-4 text-[15px] leading-7 text-[var(--tl-ink)]">
-                    {capsule.summary}
-                  </p>
-                  {capsule.scope && (
-                    <p className="mt-3 text-sm leading-6 text-[var(--tl-ink-muted)]">
-                      <strong>{t("knowledge.scope")}:</strong> {capsule.scope}
-                    </p>
-                  )}
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {[...capsule.labels, ...capsule.fingerprints].map((value) => (
-                      <span
-                        key={value}
-                        className="rounded-md border border-[var(--tl-outline)] px-2 py-1 text-xs text-[var(--tl-ink-muted)]"
-                      >
-                        {value}
-                      </span>
-                    ))}
-                  </div>
-                  <details className="mt-4 border-t border-[var(--tl-outline)] pt-3">
-                    <summary className="cursor-pointer text-sm font-semibold text-[var(--tl-primary)]">
-                      {t("knowledge.evidence")}
-                    </summary>
-                    <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-[var(--tl-bg-quiet)] p-3 text-sm leading-6 text-[var(--tl-ink)]">
-                      {capsule.evidence}
-                    </pre>
-                  </details>
-                  <p className="mt-3 text-xs text-[var(--tl-ink-muted)]">
-                    {t("knowledge.sourceTask")}: {capsule.source_task_id || "—"}
-                  </p>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
+            {capsules.isLoading ? (
+              <Loading text={t("knowledge.loading")} />
+            ) : capsules.isError ? (
+              <Loading text={String(capsules.error)} error />
+            ) : (
+              <div className="grid items-start gap-5 lg:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.25fr)]">
+                <MemoryList capsules={ordered} selectedID={selected?.id ?? null} onSelect={setSelected} />
+                <MemoryDetail capsule={selected} />
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-function Metric({
-  icon,
-  label,
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string | number;
-}) {
+function Loading({ text, error = false }: { text: string; error?: boolean }) {
   return (
-    <div className="rounded-xl border border-[var(--tl-outline)] bg-[var(--tl-surface)] p-4">
-      <div className="flex items-center gap-2 text-sm font-semibold text-[var(--tl-ink-muted)]">
-        {icon}
-        {label}
-      </div>
-      <p className="mt-2 text-2xl font-bold text-[var(--tl-ink)]">{value}</p>
+    <div className={"panel p-10 text-center text-sm " + (error ? "text-[var(--tl-rust)]" : "text-[var(--tl-ink-muted)]")}>
+      {text}
     </div>
   );
 }

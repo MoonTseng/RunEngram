@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Project } from "../lib/api";
@@ -31,6 +32,7 @@ describe("KnowledgeView", () => {
   });
 
   it("shows pending corrections and promotion metrics", async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/learning-metrics")) {
@@ -90,10 +92,10 @@ describe("KnowledgeView", () => {
 
     renderKnowledgeView();
 
+    await user.click(await screen.findByRole("tab", { name: /Pending review/ }));
     expect(await screen.findByText("Use one-flow/notion-to-prd")).toBeTruthy();
-    expect(screen.getAllByText("Pending candidates")).toHaveLength(2);
-    expect(screen.getByText("Promotion rate")).toBeTruthy();
-    expect(screen.getByText("80%")).toBeTruthy();
+    expect(screen.getAllByText("Pending review")).toHaveLength(2);
+    expect(screen.getAllByText("Verified")).toHaveLength(2);
     expect(screen.getByText(/Human correction/)).toBeTruthy();
   });
 });
