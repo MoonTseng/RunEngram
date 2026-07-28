@@ -50,6 +50,15 @@ export function useTaskEvents(taskId: string | null) {
   });
 }
 
+export function useTaskContext(taskId: string | null) {
+  return useQuery({
+    queryKey: ["tasks", taskId, "context"],
+    queryFn: () => api.getTaskContext(taskId!),
+    enabled: !!taskId,
+    retry: false,
+  });
+}
+
 export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({

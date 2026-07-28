@@ -51,6 +51,10 @@ vi.mock("./components/GraphView", () => ({
   GraphView: () => <section aria-label="Graph board">Graph board</section>,
 }));
 
+vi.mock("./components/ActionConsole", () => ({
+  ActionConsole: () => <section aria-label="Action Console">Action Console</section>,
+}));
+
 vi.mock("./components/TaskEditor", () => ({
   TaskEditor: ({
     task,
@@ -168,6 +172,7 @@ describe("App workspace layout", () => {
 
     expect(screen.getByRole("button", { name: "看板" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "依赖图" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "行动台" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "+ 新建任务" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "搜索任务" })).toBeTruthy();
   });
@@ -186,6 +191,7 @@ describe("App workspace layout", () => {
 
     expect(screen.getByRole("button", { name: "Kanban" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Graph" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Action" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "+ New" })).toBeTruthy();
   });
 
@@ -208,7 +214,7 @@ describe("App workspace layout", () => {
     expect(header.contains(kanbanButton)).toBe(true);
     expect(header.contains(graphButton)).toBe(true);
     expect(header.contains(newTaskButton)).toBe(true);
-    expect(screen.getByRole("region", { name: "Kanban board" }).parentElement?.className).not.toContain(
+    expect(screen.getByRole("region", { name: "Action Console" }).parentElement?.className).not.toContain(
       "pt-14"
     );
     expect(screen.queryByRole("button", { name: "Dependency graph" })).toBeNull();
@@ -271,7 +277,7 @@ describe("App workspace layout", () => {
     expect(header?.className).toContain("max-sm:px-3");
     expect(header?.className).toContain("max-sm:py-2");
     expect(titleGroup?.className).toContain("max-sm:basis-full");
-    expect(kanbanButton.className).toContain("max-sm:px-2");
+    expect(kanbanButton.className).toContain("shrink-0");
     expect(newTaskButton.className).toContain("max-sm:px-2");
   });
 
@@ -279,15 +285,15 @@ describe("App workspace layout", () => {
     renderApp();
 
     const searchButton = screen.getByRole("button", { name: "Search tasks" });
-    const viewToggle = screen.getByLabelText("Board view");
+    const viewToggle = screen.getByLabelText("Project workspace");
     const newTaskButton = screen.getByRole("button", { name: "+ New" });
     const actionGroup = searchButton.parentElement;
 
     expect(actionGroup?.className).toContain("items-stretch");
     expect(actionGroup?.className).toContain("gap-1.5");
-    expect(searchButton.className).toContain("h-8");
-    expect(searchButton.className).toContain("w-8");
-    expect(viewToggle.className).toContain("h-8");
+    expect(searchButton.className).toContain("h-9");
+    expect(searchButton.className).toContain("w-9");
+    expect(viewToggle.className).toContain("overflow-x-auto");
     expect(newTaskButton.className).toContain("h-8");
     expect(newTaskButton.className).toContain("inline-flex");
   });
@@ -347,7 +353,7 @@ describe("App workspace layout", () => {
     rerender(<App />);
 
     expect(screen.getByRole("complementary", { name: "Projects" })).toBeTruthy();
-    expect(screen.getByText(/Pick a project from the sidebar/i)).toBeTruthy();
+    expect(screen.getByText(/Engineering Agent task and experience tool/i)).toBeTruthy();
   });
 
   it("keeps task creation available from the graph view and Cmd+K", async () => {
@@ -371,12 +377,12 @@ describe("App workspace layout", () => {
     expect(screen.queryByRole("region", { name: "Kanban board" })).toBeNull();
   });
 
-  it("falls back to kanban for an unknown view query parameter", () => {
+  it("falls back to the Action Console for an unknown view query parameter", () => {
     mocks.viewKey = "timeline";
 
     renderApp();
 
-    expect(screen.getByRole("region", { name: "Kanban board" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Action Console" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Graph board" })).toBeNull();
   });
 
@@ -395,7 +401,7 @@ describe("App workspace layout", () => {
 
     await user.click(screen.getByRole("button", { name: "Kanban" }));
 
-    expect(mocks.setViewKey).toHaveBeenCalledWith(null);
+    expect(mocks.setViewKey).toHaveBeenCalledWith("kanban");
   });
 
   it("opens task search from the title bar and Cmd+P", async () => {

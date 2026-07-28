@@ -5,6 +5,7 @@ import {
   deleteTaskDoc,
   deleteTaskImage,
   getTaskDoc,
+  getTaskContext,
   listLearningNotes,
   listTaskEvents,
   searchTasks,
@@ -144,6 +145,36 @@ describe("listTaskEvents", () => {
         method: "GET",
         headers: expect.objectContaining({ "X-Taskline-Client": "web" }),
       })
+    );
+  });
+});
+
+describe("getTaskContext", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("loads the immutable context snapshot with an encoded task id", async () => {
+    const snapshot = {
+      id: "snapshot-1",
+      task_id: "task/one",
+      project_id: "project-1",
+      task: { id: "task/one" },
+      suggested_capsules: [],
+      created_at: 1780051741142,
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(snapshot), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getTaskContext("task/one")).resolves.toEqual(snapshot);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/tasks/task%2Fone/context",
+      expect.objectContaining({ method: "GET" })
     );
   });
 });

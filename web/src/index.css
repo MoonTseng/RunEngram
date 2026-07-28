@@ -96,6 +96,74 @@ body {
   color: var(--tl-ink);
 }
 
+.panel {
+  border: 1px solid var(--tl-outline);
+  border-radius: 0.9rem;
+  background: var(--tl-surface);
+  box-shadow: var(--tl-shadow-paper);
+}
+
+.eyebrow {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: var(--tl-primary);
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--tl-outline);
+  border-radius: 999px;
+  background: var(--tl-bg-quiet);
+  padding: 0.4rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--tl-ink-muted);
+}
+
+.primary-button,
+.secondary-button {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: 0.55rem;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  transition: 140ms ease;
+}
+
+.primary-button {
+  background: var(--tl-primary);
+  color: var(--tl-primary-contrast);
+}
+
+.primary-button:hover {
+  background: var(--tl-primary-hover);
+}
+
+.secondary-button {
+  border: 1px solid var(--tl-outline);
+  background: var(--tl-surface-raised);
+  color: var(--tl-ink);
+}
+
+.secondary-button:hover {
+  border-color: var(--tl-outline-strong);
+  background: var(--tl-bg-quiet);
+}
+
+.primary-button:focus-visible,
+.secondary-button:focus-visible {
+  outline: 2px solid var(--tl-focus);
+  outline-offset: 2px;
+}
+
 .taskline-theme :where(input, textarea, select) {
   background-color: var(--tl-surface-raised);
   border-color: var(--tl-outline);
