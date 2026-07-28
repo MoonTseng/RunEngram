@@ -1,6 +1,40 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: dark;
+  --tl-bg: #282a36;
+  --tl-bg-quiet: #21222c;
+  --tl-surface: #30323f;
+  --tl-surface-muted: #383a49;
+  --tl-surface-raised: #44475a;
+  --tl-ink: #f8f8f2;
+  --tl-ink-muted: #c1c2cf;
+  --tl-ink-faint: #9aa2c7;
+  --tl-outline: #56596d;
+  --tl-outline-strong: #737790;
+  --tl-primary: #bd93f9;
+  --tl-primary-hover: #caa9fa;
+  --tl-primary-contrast: #282a36;
+  --tl-moss: #50fa7b;
+  --tl-moss-soft: #244b3a;
+  --tl-indigo: #8be9fd;
+  --tl-indigo-soft: #294852;
+  --tl-ochre: #f1fa8c;
+  --tl-ochre-soft: #4d4c2e;
+  --tl-rust: #ff5555;
+  --tl-rust-soft: #542f3a;
+  --tl-water: #8be9fd;
+  --tl-water-soft: #294852;
+  --tl-clay: #ffb86c;
+  --tl-focus: #bd93f9;
+  --tl-overlay: rgba(10, 11, 17, 0.72);
+  --tl-shadow-paper: 0 1px 2px rgba(0, 0, 0, 0.32), 0 10px 28px rgba(0, 0, 0, 0.18);
+  --tl-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 5px 16px rgba(0, 0, 0, 0.14);
+  --tl-shadow-card-hover: 0 3px 8px rgba(0, 0, 0, 0.32), 0 12px 28px rgba(0, 0, 0, 0.2);
+  --tl-shadow-lift: 0 22px 54px rgba(0, 0, 0, 0.42), 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="paper"] {
   color-scheme: light;
   --tl-bg: #edf0e8;
   --tl-bg-quiet: #dfe7dc;
@@ -14,6 +48,7 @@
   --tl-outline-strong: #9fa890;
   --tl-primary: #6d4f2e;
   --tl-primary-hover: #553d22;
+  --tl-primary-contrast: #fffdf6;
   --tl-moss: #526647;
   --tl-moss-soft: #e4eadb;
   --tl-indigo: #4a5878;
@@ -26,6 +61,7 @@
   --tl-water-soft: #dce9e8;
   --tl-clay: #8a6650;
   --tl-focus: #91704a;
+  --tl-overlay: rgba(37, 34, 29, 0.42);
   --tl-shadow-paper: 0 1px 2px rgba(57, 45, 28, 0.1), 0 8px 18px rgba(57, 45, 28, 0.06);
   --tl-shadow-card: 0 1px 2px rgba(57, 45, 28, 0.08), 0 3px 8px rgba(57, 45, 28, 0.05);
   --tl-shadow-card-hover: 0 2px 5px rgba(57, 45, 28, 0.1), 0 6px 14px rgba(57, 45, 28, 0.07);
@@ -42,9 +78,9 @@ body {
   margin: 0;
   background-color: var(--tl-bg);
   background-image:
-    radial-gradient(circle at 20% 12%, rgba(255, 255, 255, 0.55) 0 1px, transparent 1px),
-    radial-gradient(circle at 76% 82%, rgba(82, 102, 71, 0.09) 0 1px, transparent 1px),
-    linear-gradient(115deg, rgba(255, 250, 240, 0.74), rgba(223, 231, 220, 0.62));
+    radial-gradient(circle at 20% 12%, color-mix(in srgb, var(--tl-ink) 7%, transparent) 0 1px, transparent 1px),
+    radial-gradient(circle at 76% 82%, color-mix(in srgb, var(--tl-primary) 8%, transparent) 0 1px, transparent 1px),
+    linear-gradient(115deg, color-mix(in srgb, var(--tl-surface) 55%, transparent), color-mix(in srgb, var(--tl-bg-quiet) 70%, transparent));
   background-size: 18px 18px, 22px 22px, 100% 100%;
   color: var(--tl-ink);
 }
@@ -53,7 +89,7 @@ body {
    noisy fast otherwise. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(109, 79, 46, 0.35) transparent;
+  scrollbar-color: color-mix(in srgb, var(--tl-primary) 42%, transparent) transparent;
 }
 
 .taskline-theme {
@@ -64,7 +100,7 @@ body {
   background-color: var(--tl-surface-raised);
   border-color: var(--tl-outline);
   color: var(--tl-ink);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--tl-ink) 10%, transparent);
 }
 
 .taskline-theme :where(input, textarea, select)::placeholder {
