@@ -16,21 +16,40 @@ RunEngram 把研发任务、Agent 执行、验证证据和可复用项目上下�
 > Exploration Capsule、学习候选自动捕获、基于证据的晋升、自动召回和复用
 > 效果指标已经可用。
 
+![RunEngram 工程记忆面板](./docs/assets/runengram-learning-loop-zh-CN.jpg)
+
+<p align="center"><sub>真实本地试运行：经过验证的人工纠正，成为后续任务可复用的项目记忆。</sub></p>
+
 ## 为什么需要 RunEngram
 
-AI Coding 提高了单次编码速度，但真实研发仍有几个反复发生的问题：
+AI Coding 提高一次开发的速度。RunEngram 让经过验证的研发经验在任务之间持续
+复利。
 
-- 新会话重新解释需求、架构约束和历史决策；
-- 不同 Agent 重复搜索同一批代码和依赖关系；
-- 任务完成了，可靠经验却留在聊天记录里；
-- 看板能显示“做到哪一步”，但不能让下一次执行更准确；
-- 团队难以回答 AI 到底减少了多少探索、返工和人工操作。
+| 反复发生的研发成本 | RunEngram 的处理方式 |
+| --- | --- |
+| 每个新会话重新解释需求和架构 | 用 Context Snapshot 冻结任务输入与召回知识 |
+| 不同 Agent 重复搜索代码、重试失败命令 | 召回带范围与代码指纹的 Exploration Capsule |
+| 有用纠正消失在聊天记录中 | 捕获带来源与适用范围的结构化 Learning Note |
+| 猜测或过期建议污染知识库 | 只有带证据的候选可以晋升，其余保持待验证或拒绝 |
+| 无法判断 AI 是否产生长期收益 | 统计候选、晋升、召回与实际复用结果 |
 
-RunEngram 的目标不是再做一个项目管理看板，而是建立可验证研发学习循环：
+## 学习闭环如何产生复利
 
-```text
-任务上下文 → Agent 执行 → 证据验证 → 经验提炼 → 下一任务复用
+```mermaid
+flowchart LR
+    A["任务 + 已召回上下文"] -->|"L1 · 执行"| B["Coding Agent 运行"]
+    B -->|"L2 · 验证"| C["测试 · Review · 证据"]
+    C --> D{"经验可复用？"}
+    D -->|"人工纠正或 Agent 恢复"| E["待验证 Learning Note"]
+    D -->|"否"| H["仅保留任务结果"]
+    E -->|"证据验证通过"| F["有效 Exploration Capsule"]
+    E -->|"未验证或错误"| G["保持待验证或拒绝"]
+    F -->|"L3 · 学习"| I["下一任务 Context Snapshot"]
+    I --> B
 ```
+
+RunEngram 围绕 Codex、Claude Code、Cursor、自定义 Agent 和团队现有 SOP
+建立闭环，不替代这些工具。
 
 ## 当前可以使用的能力
 
