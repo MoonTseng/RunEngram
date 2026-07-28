@@ -86,7 +86,7 @@ export function useUpdateTask(projectIdOrName: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof api.updateTask>[1] }) =>
-      api.updateTask(id, patch),
+      api.updateTask(id, { ...patch, force: true }),
     onSuccess: (task) => {
       qc.setQueryData<api.Task[]>(tasksQueryKey(projectIdOrName), (tasks) => upsertTask(tasks, task));
       invalidateTasks(qc, projectIdOrName);

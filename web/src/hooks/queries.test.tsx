@@ -66,6 +66,10 @@ describe("task mutations", () => {
     ]);
 
     expect(outcome).toBe("resolved");
+    expect(api.updateTask).toHaveBeenCalledWith(original.id, {
+      title: "Updated",
+      force: true,
+    });
     expect(client.getQueryData(["tasks", "project-1"])).toEqual([updated]);
     expect(client.invalidateQueries).toHaveBeenCalledWith({ queryKey: ["tasks", "project-1"] });
   });

@@ -343,7 +343,7 @@ export async function updateTask(
   id: string,
   patch: Partial<
     Pick<Task, "title" | "description" | "type" | "state" | "priority" | "labels">
-  >
+  > & { force?: boolean }
 ): Promise<Task> {
   return request<Task>("PATCH", `/api/v1/tasks/${encodeURIComponent(id)}`, patch);
 }
