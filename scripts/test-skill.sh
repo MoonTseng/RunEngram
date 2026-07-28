@@ -44,6 +44,11 @@ required_sections = {
         "taskline-management run <requirement>",
         "taskline-management spec <requirement>",
         "taskline-management 方案 <需求>",
+        "taskline learning capture",
+        "taskline learning promote",
+        "taskline learning reject",
+        "Never capture secrets",
+        "human correction",
     ],
     ".agents/skills/taskline-localtest/SKILL.md": [
         "### 1. Write the test FIRST",

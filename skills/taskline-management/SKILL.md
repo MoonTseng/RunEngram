@@ -388,6 +388,57 @@ Docs and links surface inline on `task get` and in the web detail view.
 There is no limit on how many docs or links a task can hold; favour
 adding too many over too few — they're cheap to remove later.
 
+## Automatic learning notes
+
+During a claimed task, capture a Learning Note without asking the user when:
+
+- a human correction fixes a failed tool, command, workflow, or architecture
+  route and can help a future task; or
+- the agent recovers from a failed approach and verifies a reusable route.
+
+Run `taskline learning capture <task-id>` immediately. Preserve only minimal
+trigger, reusable guidance, scope, labels, fingerprints, and producer. Never
+capture secrets, credentials, raw transcripts, guesses, task-only preferences,
+or recalled guidance that already existed.
+
+Example: a user supplies a Notion requirement link. Direct reading fails, then
+the user explains that `one-flow/notion-to-prd` must normalize it first:
+
+```bash
+taskline learning capture <task-id> --project <project> \
+  --kind human-correction \
+  --trigger "Direct Notion requirement read failed" \
+  --guidance "Use one-flow/notion-to-prd before requirement analysis" \
+  --scope "Notion requirement analysis" \
+  --label notion --label prd --fingerprint notion-to-prd \
+  --producer codex
+```
+
+During test or wrap-up, list pending notes for the task:
+
+```bash
+taskline learning list --task <task-id> --status pending
+```
+
+Promote only after commands, tests, artifacts, or merged changes verify the
+guidance:
+
+```bash
+taskline learning promote <note-id> --evidence-file <file>
+```
+
+Reject disproved or non-reusable guidance:
+
+```bash
+taskline learning reject <note-id> --reason "<evidence-backed reason>"
+```
+
+Leave unverified notes pending. Pending notes remain visible but are never
+recalled into another task. Never capture secrets in a Learning Note or its
+evidence. Use `--producer codex` by default and `--producer claude-code` when
+the recovery came from Claude Code; producer identifies the tool, not a
+separate knowledge silo.
+
 ## Stage playbook — "work the queue"
 
 When the user says "work the queue" / "do the next task" / "keep
@@ -495,10 +546,12 @@ task description or implementation notes, then continue.
   4. Write or extend failing tests for the new behavior.
   5. Implement until the focused tests pass and the behavior is ready
      for full local verification.
-  6. Create or update a `Dev Notes` task doc summarizing the
+  6. Capture each new reusable recovery or human correction immediately with
+     `taskline learning capture`. Do not wait until chat context is lost.
+  7. Create or update a `Dev Notes` task doc summarizing the
      implementation, issues encountered, and any divergence from the
      `Spec` doc with the reason.
-  7. For each recalled capsule used, record the observed result:
+  8. For each recalled capsule used, record the observed result:
      `taskline capsule use <capsule-id> --task <id> --outcome helpful|rejected|stale`.
      Use `stale` when current code disproves once-valid knowledge. Include a
      short note explaining evidence.
@@ -525,13 +578,16 @@ task description or implementation notes, then continue.
      (capability: code review — `code-review:code-review`)
   5. Fix anything the review or tests surface; re-run the relevant
      tests after each fix.
-  6. Create or update a `Test Report` task doc with reviewed test
+  6. Run `taskline learning list --task <id> --status pending`. Promote each
+     verified candidate with its evidence file, reject disproved guidance with
+     a concrete reason, and leave genuinely unverified candidates pending.
+  7. Create or update a `Test Report` task doc with reviewed test
      cases, commands/checks run, pass rate, failures, and whether any
      failures require dropping back to `dev`.
-  7. Stage and commit. Conventional, minimal messages.
-  8. `git push -u origin <branch>`.
-  9. `gh pr create` with title, summary, and a test plan.
-  10. Attach the PR URL to the task:
+  8. Stage and commit. Conventional, minimal messages.
+  9. `git push -u origin <branch>`.
+  10. `gh pr create` with title, summary, and a test plan.
+  11. Attach the PR URL to the task:
      `taskline task link <task-id> --url <pr-url> --label "PR #N"`
      so anyone reading the task later can jump straight to the
      review.
@@ -587,15 +643,16 @@ task description or implementation notes, then continue.
 
 - **Trigger:** task is `done` after the PR was merged and verified.
 - **Actions:**
-  1. Promote reusable exploration only when evidence exists. Create one
-     focused capsule per durable finding with title, summary, applicability
-     scope, code/module fingerprints, and a Markdown evidence file containing
-     tests, commands, call-site checks, or merged change references. Use
-     `--producer codex` by default, `--producer claude-code` when running there.
-     Never promote guesses, raw chat, secrets, credentials, task-only prose,
-     or conclusions not rechecked against code.
-  2. `git checkout main && git pull`
-  3. Delete the local feature branch (gh's `--delete-branch` may have
+  1. Run `taskline learning list --task <id> --status pending` again. Verify no
+     candidate was silently promoted. Promote only with evidence, reject only
+     with reason, and leave unresolved candidates pending.
+  2. For durable verified exploration that was not a correction or recovery,
+     create one focused capsule with applicability scope, code/module
+     fingerprints, and Markdown evidence. Never promote guesses, raw chat,
+     secrets, credentials, task-only prose, or conclusions not rechecked
+     against code.
+  3. `git checkout main && git pull`
+  4. Delete the local feature branch (gh's `--delete-branch` may have
      done this already).
 - The taskline task is already `done`; this stage is repo hygiene.
 
