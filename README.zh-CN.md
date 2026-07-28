@@ -16,9 +16,9 @@ RunEngram 把研发任务、Agent 执行、验证证据和可复用项目上下�
 > Exploration Capsule、学习候选自动捕获、基于证据的晋升、自动召回和复用
 > 效果指标已经可用。
 
-![RunEngram 工程记忆面板](./docs/assets/runengram-learning-loop-zh-CN.jpg)
+![RunEngram 行动台](./docs/assets/runengram-action-console-zh-CN.jpg)
 
-<p align="center"><sub>真实本地试运行：经过验证的人工纠正，成为后续任务可复用的项目记忆。</sub></p>
+<p align="center"><sub>行动优先：当前任务、下一步、阻塞因素和已召回经验集中呈现。</sub></p>
 
 ## 为什么需要 RunEngram
 
@@ -32,6 +32,15 @@ AI Coding 提高一次开发的速度。RunEngram 让经过验证的研发经验
 | 有用纠正消失在聊天记录中 | 捕获带来源与适用范围的结构化 Learning Note |
 | 猜测或过期建议污染知识库 | 只有带证据的候选可以晋升，其余保持待验证或拒绝 |
 | 无法判断 AI 是否产生长期收益 | 统计候选、晋升、召回与实际复用结果 |
+
+![RunEngram 可验证工程记忆](./docs/assets/runengram-engineering-memory.jpg)
+
+<details>
+<summary>浅色主题</summary>
+
+![RunEngram 浅色主题](./docs/assets/runengram-action-console-light.jpg)
+
+</details>
 
 ## 学习闭环如何产生复利
 
@@ -50,6 +59,25 @@ flowchart LR
 
 RunEngram 围绕 Codex、Claude Code、Cursor、自定义 Agent 和团队现有 SOP
 建立闭环，不替代这些工具。
+
+## RunEngram 的差异
+
+RunEngram 同时管理研发工作和经过验证、可复用的工程上下文。下表比较各工具
+官方文档中的核心定位，不代表它们的全部能力。
+
+| 能力 | RunEngram | GitHub Copilot Memory | Claude Code memory | OpenHands | LinearB |
+| --- | --- | --- | --- | --- | --- |
+| 核心作用 | 闭合任务 → 证据 → 记忆 | 保存 Copilot 仓库事实 | 持久化指令与自动记忆 | 在工作区执行 Agent | 度量软件交付 |
+| 任务状态与 Agent 租约 | 支持 | 不支持 | 不支持 | 执行会话 | 交付流程数据 |
+| 不可变任务上下文 | 支持 | 不支持 | 不支持 | 工作区/会话上下文 | 不支持 |
+| 基于证据的记忆晋升 | 支持 | 引用校验 | 人工文件/自动记忆 | 不支持 | 不支持 |
+| 记忆复用效果观测 | 有效/无效/过期 | 不支持 | 不支持 | 不支持 | 不支持 |
+| 默认部署 | 本地单二进制 + SQLite | GitHub 服务 | 本地文件 | 本地或远端运行时 | SaaS |
+
+资料：[GitHub Copilot Memory](https://docs.github.com/en/copilot/concepts/agents/copilot-memory)、
+[Claude Code memory](https://docs.anthropic.com/en/docs/claude-code/memory)、
+[OpenHands](https://docs.openhands.dev/overview)、
+[LinearB](https://linearb.io/platform/engineering-metrics)。
 
 ## 当前可以使用的能力
 
@@ -89,7 +117,33 @@ RunEngram 围绕 Codex、Claude Code、Cursor、自定义 Agent 和团队现有 
 密码、隐藏推理和未验证猜测不会写入项目记忆；只有晋升后的 Capsule 才会被
 后续任务召回。
 
-## 快速开始
+## 作为 Codex 插件安装
+
+RunEngram 使用 Codex 原生市场插件结构，会像其他插件一样出现在
+**插件 → 市场**：
+
+```bash
+codex plugin marketplace add MoonTseng/RunEngram --ref main
+codex plugin add runengram@runengram
+```
+
+新建一个 Codex 任务，然后输入：
+
+```text
+在这台电脑上安装并启动 RunEngram。
+```
+
+安装过程会下载带校验和的 Release，安装到 `~/.local`，启动仅监听本机回环
+地址的服务；项目数据仍保存在本机。升级：
+
+```bash
+codex plugin marketplace upgrade runengram
+codex plugin add runengram@runengram
+```
+
+升级后新建 Codex 任务，使新版 Skills 生效。
+
+## 从源码构建
 
 环境要求：
 
@@ -271,6 +325,12 @@ RunEngram 仍在早期阶段。欢迎提交可复现问题、真实研发流程�
 
 提交改动前请运行与改动范围对应的测试，并避免提交任务数据库、令牌、私有
 项目文档或其他本地运行数据。
+
+## 隐私与数据
+
+RunEngram 默认仅监听 `127.0.0.1`。任务、Markdown、附件、上下文快照和工程
+记忆保存在本机 RunEngram 数据目录。Skill 禁止捕获 API Token、账号凭证、
+原始私聊或模型隐藏推理。
 
 ## License
 

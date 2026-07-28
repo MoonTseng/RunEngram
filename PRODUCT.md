@@ -62,8 +62,12 @@ The current alpha ships the **task execution and learning kernel**:
 - append-only task operation history;
 - GitHub PR, review, and CI evidence gates;
 - JSON-first CLI and an agent-facing skill;
-- an embedded bilingual web UI;
-- local SQLite and filesystem storage.
+- an embedded bilingual web UI with an action-first default workspace,
+  Kanban, dependency graph, engineering-memory inspection, and Dracula/paper
+  themes;
+- a native Codex marketplace plugin with checksum-verified local runtime
+  installation and upgrade;
+- local SQLite and filesystem storage;
 - immutable task-start context snapshots;
 - verified Exploration Capsules with project scope, evidence, fingerprints,
   source task, and producer;
@@ -193,7 +197,8 @@ learning improvement.
 
 ## Roadmap order
 
-1. Stabilize one-task execution, evidence, recovery, and public installation.
+1. ✅ Stabilize one-task execution, evidence, recovery, and Codex plugin
+   packaging.
 2. ✅ Add immutable context snapshots and freshness fingerprints.
 3. ✅ Add verified exploration capsules and task-level observed reuse.
 4. ✅ Add agent-driven learning-note capture, evidence-gated promotion, and

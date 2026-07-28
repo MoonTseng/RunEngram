@@ -5,7 +5,7 @@ description: Install or upgrade the complete local RunEngram runtime for Codex, 
 
 # RunEngram Setup
 
-Install complete local runtime from signed-by-checksum GitHub release artifacts.
+Install complete local runtime from checksum-verified GitHub release artifacts.
 
 ## Procedure
 

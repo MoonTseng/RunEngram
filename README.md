@@ -20,9 +20,9 @@ context the next task can use.
 > automatic learning-note capture, evidence-gated promotion, verified
 > Exploration Capsules, recall, and observed reuse metrics work now.
 
-![RunEngram engineering memory dashboard](./docs/assets/runengram-learning-loop.jpg)
+![RunEngram Action Console](./docs/assets/runengram-action-console.jpg)
 
-<p align="center"><sub>Real local pilot: a verified human correction becomes reusable project memory.</sub></p>
+<p align="center"><sub>Action-first workspace: current task, next useful action, blockers, and recalled experience.</sub></p>
 
 ## Why RunEngram
 
@@ -36,6 +36,15 @@ compound across tasks.
 | Lose useful corrections inside chat transcripts | Capture structured Learning Notes with source and scope |
 | Pollute memory with guesses or stale advice | Promote only evidence-backed candidates; reject or retain the rest |
 | Guess whether AI work improved | Measure candidates, promotion, recall, and observed reuse |
+
+![RunEngram verified engineering memory](./docs/assets/runengram-engineering-memory.jpg)
+
+<details>
+<summary>Paper theme</summary>
+
+![RunEngram paper theme](./docs/assets/runengram-action-console-light.jpg)
+
+</details>
 
 ## How the loop compounds
 
@@ -54,6 +63,25 @@ flowchart LR
 
 RunEngram coordinates this loop around Codex, Claude Code, Cursor, custom
 agents, and existing engineering SOPs. It does not replace them.
+
+## Where RunEngram differs
+
+RunEngram combines work orchestration and verified, reusable context. This
+table compares each project's documented primary role, not every feature.
+
+| Capability | RunEngram | GitHub Copilot Memory | Claude Code memory | OpenHands | LinearB |
+| --- | --- | --- | --- | --- | --- |
+| Main job | Close task → evidence → memory loop | Store repository facts for Copilot | Persist instructions and auto memory | Execute agents in workspaces | Measure software delivery |
+| Task state and agent leases | Yes | No | No | Execution sessions | Delivery workflow data |
+| Immutable task context | Yes | No | No | Workspace/session context | No |
+| Evidence-gated memory promotion | Yes | Citation validation | Manual files / auto memory | No | No |
+| Observed memory reuse | Helpful / rejected / stale | No | No | No | No |
+| Default deployment | Local single binary + SQLite | GitHub service | Local files | Local or remote runtime | SaaS |
+
+Sources: [GitHub Copilot Memory](https://docs.github.com/en/copilot/concepts/agents/copilot-memory),
+[Claude Code memory](https://docs.anthropic.com/en/docs/claude-code/memory),
+[OpenHands](https://docs.openhands.dev/overview), and
+[LinearB](https://linearb.io/platform/engineering-metrics).
 
 ## What works today
 
@@ -107,7 +135,33 @@ This is agent-driven capture, not passive transcript ingestion. Raw chats,
 secrets, tokens, hidden reasoning, and unverified guesses are never copied into
 project memory. Only promoted capsules enter future-task recall.
 
-## Quick start
+## Install as a Codex plugin
+
+RunEngram ships as a native Codex marketplace plugin, like other entries in
+Codex **Plugins → Marketplace**:
+
+```bash
+codex plugin marketplace add MoonTseng/RunEngram --ref main
+codex plugin add runengram@runengram
+```
+
+Start a new Codex task, then ask:
+
+```text
+Set up RunEngram on this computer.
+```
+
+Setup downloads a checksum-verified release, installs it under `~/.local`,
+starts a loopback-only service, and keeps project data local. To update:
+
+```bash
+codex plugin marketplace upgrade runengram
+codex plugin add runengram@runengram
+```
+
+Start a new Codex task after upgrade so refreshed skills load.
+
+## Build from source
 
 Requirements:
 
@@ -291,6 +345,13 @@ feedback, coding-agent adapters, and measurement designs are welcome.
 Before submitting changes, run tests appropriate to the modified area. Never
 commit task databases, tokens, private project documents, or local runtime
 data.
+
+## Privacy and data
+
+RunEngram binds to `127.0.0.1` by default. Tasks, Markdown, attachments,
+context snapshots, and engineering memory stay in the local RunEngram data
+directory. Skills must never capture API tokens, credentials, raw private
+chats, or hidden model reasoning.
 
 ## License
 

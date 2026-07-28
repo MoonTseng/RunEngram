@@ -976,7 +976,7 @@ describe("TaskEditor edit actions", () => {
     const onClose = vi.fn();
     const claimedTask: Task = {
       ...task,
-      owner: "yue_zeng",
+      owner: "agent-owner",
       claimed_at: 1780051741142,
       lease_expires_at: 1780055341142,
     };
@@ -995,7 +995,7 @@ describe("TaskEditor edit actions", () => {
         });
       }
       return new Response(
-        JSON.stringify({ error: "conflict: task is claimed by yue_zeng; pass owner or force" }),
+        JSON.stringify({ error: "conflict: task is claimed by agent-owner; pass owner or force" }),
         {
           status: 409,
           headers: { "Content-Type": "application/json" },

@@ -19,11 +19,16 @@
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "websiteURL": "https://github.com/MoonTseng/RunEngram",
+    "privacyPolicyURL": "https://github.com/MoonTseng/RunEngram/blob/main/README.md#privacy-and-data",
+    "termsOfServiceURL": "https://github.com/MoonTseng/RunEngram/blob/main/LICENSE",
     "defaultPrompt": [
       "Set up RunEngram on this computer.",
       "Create and run this task with RunEngram.",
       "Check my RunEngram installation."
     ],
+    "composerIcon": "./assets/runengram-small.svg",
+    "logo": "./assets/runengram.svg",
+    "screenshots": [],
     "brandColor": "#BD93F9"
   }
 }

@@ -226,7 +226,7 @@ promoted -> Verified
 - [ ] Run plugin validator:
 
 ```bash
-python3 /Users/yue_zeng/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/runengram
+python3 ~/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/runengram
 ```
 
 - [ ] Run `./scripts/test-skill.sh` and shell syntax checks.
@@ -259,9 +259,9 @@ python3 /Users/yue_zeng/.codex/skills/.system/plugin-creator/scripts/validate_pl
 - Modify: `README.zh-CN.md`
 - Modify: `PRODUCT.md`
 - Modify: `使用说明.md`
-- Create: `docs/assets/runengram-action-console.png`
+- Create: `docs/assets/runengram-action-console.jpg`
 - Create: `docs/assets/runengram-memory.png`
-- Create: `docs/assets/runengram-action-console-light.png`
+- Create: `docs/assets/runengram-action-console-light.jpg`
 
 - [ ] Start rebuilt embedded server with isolated temporary data and deterministic demo fixtures.
 - [ ] Capture real Dracula Action Console, Engineering Memory, and paper-theme screenshots at README-safe viewport.
@@ -305,4 +305,3 @@ codex plugin add runengram@runengram
 - [ ] Rebuild/start local server; manually verify Action Console, board scrolling, dependency graph, memory detail, Dracula default, paper switch, locale switch, search, task editor, and browser reload persistence.
 - [ ] Review `git diff --check`, `git status`, commit history, secrets scan, placeholder scan, and README claims against implemented code.
 - [ ] Push `codex/dashboard-ux-refresh` to `origin`.
-
