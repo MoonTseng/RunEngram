@@ -60,6 +60,9 @@ var schemaTaskEvents string
 //go:embed schema/0014_learning_assets.sql
 var schemaLearningAssets string
 
+//go:embed schema/0015_learning_notes.sql
+var schemaLearningNotes string
+
 // schemaMigrations defines the canonical migration set, keyed by
 // monotonically increasing version. We track the last-applied version in
 // SQLite's built-in `PRAGMA user_version` and only run migrations whose
@@ -86,6 +89,7 @@ var schemaMigrations = []migration{
 	{version: 12, sql: schemaTaskCompletion},
 	{version: 13, sql: schemaTaskEvents},
 	{version: 14, sql: schemaLearningAssets},
+	{version: 15, sql: schemaLearningNotes},
 }
 
 // ErrNotFound is returned when a lookup misses.
@@ -488,6 +492,9 @@ func (s *Store) GetTask(ctx context.Context, id string) (*model.Task, error) {
 		return nil, err
 	}
 	if err := s.attachLinks(ctx, t); err != nil {
+		return nil, err
+	}
+	if err := s.attachLearningNotes(ctx, t); err != nil {
 		return nil, err
 	}
 	return t, nil
@@ -1572,7 +1579,10 @@ func (s *Store) attachTaskDetails(ctx context.Context, tasks []*model.Task) erro
 	if err := s.attachDocsForTasks(ctx, tasks); err != nil {
 		return err
 	}
-	return s.attachLinksForTasks(ctx, tasks)
+	if err := s.attachLinksForTasks(ctx, tasks); err != nil {
+		return err
+	}
+	return s.attachLearningNotesForTasks(ctx, tasks)
 }
 
 func (s *Store) attachDepsForTasks(ctx context.Context, tasks []*model.Task) error {
@@ -1722,6 +1732,212 @@ func isFKErr(err error) bool {
 	}
 	msg := err.Error()
 	return strings.Contains(msg, "FOREIGN KEY constraint failed") || strings.Contains(msg, "constraint failed: FOREIGN KEY")
+}
+
+// LearningNoteFilter narrows learning-candidate reads by project, task, or status.
+type LearningNoteFilter struct {
+	ProjectID string
+	TaskID    string
+	Status    model.LearningNoteStatus
+	Limit     int
+}
+
+func (s *Store) CreateLearningNote(ctx context.Context, note *model.LearningNote) error {
+	if note == nil {
+		return errors.New("learning note is required")
+	}
+	if !note.Kind.Valid() {
+		return fmt.Errorf("invalid learning note kind %q", note.Kind)
+	}
+	var taskProjectID string
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT project_id FROM tasks WHERE id = ?`,
+		note.SourceTaskID,
+	).Scan(&taskProjectID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: source task %s", ErrNotFound, note.SourceTaskID)
+	}
+	if err != nil {
+		return err
+	}
+	if taskProjectID != note.ProjectID {
+		return fmt.Errorf("%w: source task belongs to another project", ErrConflict)
+	}
+	labels, err := normalizeLabels(note.Labels)
+	if err != nil {
+		return err
+	}
+	fingerprints, err := normalizeLabels(note.Fingerprints)
+	if err != nil {
+		return err
+	}
+	labelsJSON, _ := encodeLabels(labels)
+	fingerprintsJSON, _ := encodeLabels(fingerprints)
+	note.ID = newID()
+	note.Labels = labels
+	note.Fingerprints = fingerprints
+	note.Producer = strings.TrimSpace(note.Producer)
+	if note.Producer == "" {
+		note.Producer = "codex"
+	}
+	note.Status = model.LearningNotePending
+	note.Evidence = ""
+	note.CapsuleID = ""
+	note.RejectionReason = ""
+	note.CreatedAt = now()
+	note.UpdatedAt = note.CreatedAt
+	note.ResolvedAt = 0
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO learning_notes(
+			id,project_id,source_task_id,kind,trigger,guidance,scope,labels,fingerprints,
+			producer,status,evidence,capsule_id,rejection_reason,created_at,updated_at,resolved_at
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		note.ID, note.ProjectID, note.SourceTaskID, note.Kind, note.Trigger, note.Guidance,
+		note.Scope, labelsJSON, fingerprintsJSON, note.Producer, note.Status, note.Evidence,
+		note.CapsuleID, note.RejectionReason, note.CreatedAt, note.UpdatedAt, note.ResolvedAt,
+	)
+	if isFKErr(err) {
+		return fmt.Errorf("%w: project %s", ErrNotFound, note.ProjectID)
+	}
+	return err
+}
+
+func (s *Store) GetLearningNote(ctx context.Context, id string) (*model.LearningNote, error) {
+	row := s.db.QueryRowContext(
+		ctx,
+		`SELECT `+learningNoteSelectColumns+` FROM learning_notes WHERE id = ?`,
+		id,
+	)
+	return scanLearningNote(row)
+}
+
+func (s *Store) ListLearningNotes(ctx context.Context, filter LearningNoteFilter) ([]model.LearningNote, error) {
+	if filter.ProjectID == "" && filter.TaskID == "" {
+		return nil, errors.New("ListLearningNotes: ProjectID or TaskID required")
+	}
+	query := `SELECT ` + learningNoteSelectColumns + ` FROM learning_notes WHERE 1=1`
+	args := make([]any, 0, 4)
+	if filter.ProjectID != "" {
+		query += ` AND project_id = ?`
+		args = append(args, filter.ProjectID)
+	}
+	if filter.TaskID != "" {
+		query += ` AND source_task_id = ?`
+		args = append(args, filter.TaskID)
+	}
+	if filter.Status != "" {
+		if !filter.Status.Valid() {
+			return nil, fmt.Errorf("invalid learning note status %q", filter.Status)
+		}
+		query += ` AND status = ?`
+		args = append(args, filter.Status)
+	}
+	query += ` ORDER BY updated_at DESC, id ASC`
+	if filter.Limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, filter.Limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	notes := make([]model.LearningNote, 0)
+	for rows.Next() {
+		note, err := scanLearningNote(rows)
+		if err != nil {
+			return nil, err
+		}
+		notes = append(notes, *note)
+	}
+	return notes, rows.Err()
+}
+
+func (s *Store) attachLearningNotes(ctx context.Context, task *model.Task) error {
+	notes, err := s.ListLearningNotes(ctx, LearningNoteFilter{TaskID: task.ID})
+	if err != nil {
+		return err
+	}
+	task.LearningNotes = notes
+	return nil
+}
+
+func (s *Store) attachLearningNotesForTasks(ctx context.Context, tasks []*model.Task) error {
+	return forTaskDetailsBatch(tasks, func(placeholders string, args []any, byID map[string]*model.Task) error {
+		rows, err := s.db.QueryContext(
+			ctx,
+			fmt.Sprintf(
+				`SELECT %s FROM learning_notes
+				  WHERE source_task_id IN (%s)
+				  ORDER BY source_task_id ASC, updated_at DESC, id ASC`,
+				learningNoteSelectColumns,
+				placeholders,
+			),
+			args...,
+		)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			note, err := scanLearningNote(rows)
+			if err != nil {
+				return err
+			}
+			if task := byID[note.SourceTaskID]; task != nil {
+				task.LearningNotes = append(task.LearningNotes, *note)
+			}
+		}
+		return rows.Err()
+	})
+}
+
+const learningNoteSelectColumns = `
+	id,project_id,source_task_id,kind,trigger,guidance,scope,labels,fingerprints,
+	producer,status,evidence,capsule_id,rejection_reason,created_at,updated_at,resolved_at`
+
+type learningNoteScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanLearningNote(scanner learningNoteScanner) (*model.LearningNote, error) {
+	var note model.LearningNote
+	var labelsJSON, fingerprintsJSON string
+	err := scanner.Scan(
+		&note.ID,
+		&note.ProjectID,
+		&note.SourceTaskID,
+		&note.Kind,
+		&note.Trigger,
+		&note.Guidance,
+		&note.Scope,
+		&labelsJSON,
+		&fingerprintsJSON,
+		&note.Producer,
+		&note.Status,
+		&note.Evidence,
+		&note.CapsuleID,
+		&note.RejectionReason,
+		&note.CreatedAt,
+		&note.UpdatedAt,
+		&note.ResolvedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	note.Labels, err = decodeLabels(labelsJSON)
+	if err != nil {
+		return nil, err
+	}
+	note.Fingerprints, err = decodeLabels(fingerprintsJSON)
+	if err != nil {
+		return nil, err
+	}
+	return &note, nil
 }
 
 // CapsuleFilter narrows project knowledge reads.

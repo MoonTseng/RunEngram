@@ -110,6 +110,47 @@ func TestTaskCreateAndState(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestLearningNotePersistenceAndTaskAttachment(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	project, err := st.CreateProject(ctx, "learning-notes", "")
+	require.NoError(t, err)
+	task, err := st.CreateTask(
+		ctx,
+		project.ID,
+		"Read Notion PRD",
+		"",
+		model.TaskTypeFeature,
+		1,
+		model.StateStart,
+	)
+	require.NoError(t, err)
+
+	note := &model.LearningNote{
+		ProjectID:    project.ID,
+		SourceTaskID: task.ID,
+		Kind:         model.LearningNoteHumanCorrection,
+		Trigger:      "Notion link was not readable",
+		Guidance:     "Use one-flow/notion-to-prd",
+		Scope:        "Notion requirement analysis",
+		Labels:       []string{"notion", "prd"},
+		Fingerprints: []string{"notion-to-prd"},
+		Producer:     "codex",
+		Status:       model.LearningNotePending,
+	}
+	require.NoError(t, st.CreateLearningNote(ctx, note))
+
+	got, err := st.GetLearningNote(ctx, note.ID)
+	require.NoError(t, err)
+	require.Equal(t, model.LearningNotePending, got.Status)
+	require.Equal(t, []string{"notion", "prd"}, got.Labels)
+
+	withDetails, err := st.GetTask(ctx, task.ID)
+	require.NoError(t, err)
+	require.Len(t, withDetails.LearningNotes, 1)
+	require.Equal(t, note.ID, withDetails.LearningNotes[0].ID)
+}
+
 func TestStateTransitionRules(t *testing.T) {
 	// Forward jumps are allowed.
 	require.NoError(t, model.StateStart.CanTransitionTo(model.StateSpec))
@@ -933,7 +974,7 @@ func TestMigrationsRunOnceAcrossReopens(t *testing.T) {
 
 	v1, err := readUserVersion(path)
 	require.NoError(t, err)
-	require.Equal(t, 14, v1, "first open should advance to latest schema version")
+	require.Equal(t, 15, v1, "first open should advance to latest schema version")
 
 	require.NoError(t, st1.Close())
 
@@ -1082,7 +1123,7 @@ func TestMigrationAddsDocsTypeWithoutDroppingTaskChildren(t *testing.T) {
 
 	v, err := readUserVersion(path)
 	require.NoError(t, err)
-	require.Equal(t, 14, v)
+	require.Equal(t, 15, v)
 
 	got, err := st.GetTask(ctx, "b")
 	require.NoError(t, err)
@@ -1156,7 +1197,7 @@ func TestMigrationUpgradesCreatedAndDesignRows(t *testing.T) {
 
 	v, err := readUserVersion(path)
 	require.NoError(t, err)
-	require.Equal(t, 14, v, "migration should have run through latest schema version")
+	require.Equal(t, 15, v, "migration should have run through latest schema version")
 
 	// The legacy 'created' row was renamed to 'start' during the swap.
 	ta, err := st.GetTask(ctx, "a")
