@@ -1,0 +1,581 @@
+package client
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// Client is a thin HTTP wrapper for taskline-server.
+type Client struct {
+	BaseURL string
+	HTTP    *http.Client
+	Token   string
+}
+
+// New constructs a Client targeting baseURL.
+func New(baseURL string) *Client {
+	return &Client{
+		BaseURL: strings.TrimRight(baseURL, "/"),
+		HTTP:    &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+// Agent mirrors the server-side agent identity shape.
+type Agent struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+type ActiveClaim struct {
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	ClaimedAt      int64  `json:"claimed_at"`
+	ClaimedForMS   int64  `json:"claimed_for_ms"`
+	LeaseExpiresAt int64  `json:"lease_expires_at"`
+}
+
+type ServerStatus struct {
+	OK          bool          `json:"ok"`
+	ServerTime  int64         `json:"server_time"`
+	Agent       *Agent        `json:"agent,omitempty"`
+	ActiveTasks []ActiveClaim `json:"active_tasks"`
+}
+
+// Project mirrors the server-side project shape.
+type Project struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	CreatedAt   int64  `json:"created_at"`
+	UpdatedAt   int64  `json:"updated_at"`
+}
+
+// Task mirrors the server-side task shape.
+type Task struct {
+	ID             string   `json:"id"`
+	ProjectID      string   `json:"project_id"`
+	Title          string   `json:"title"`
+	Description    string   `json:"description"`
+	Type           string   `json:"type"`
+	State          string   `json:"state"`
+	Priority       int      `json:"priority"`
+	Labels         []string `json:"labels"`
+	Owner          string   `json:"owner"`
+	ClaimedAt      int64    `json:"claimed_at"`
+	LeaseExpiresAt int64    `json:"lease_expires_at"`
+	CompletedAt    int64    `json:"completed_at"`
+	DependsOn      []string `json:"depends_on,omitempty"`
+	Images         []Image  `json:"images,omitempty"`
+	Docs           []Doc    `json:"docs,omitempty"`
+	Links          []Link   `json:"links,omitempty"`
+	CreatedAt      int64    `json:"created_at"`
+	UpdatedAt      int64    `json:"updated_at"`
+}
+
+// TaskEvent is one append-only task operation record.
+type TaskEvent struct {
+	ID        string         `json:"id"`
+	TaskID    string         `json:"task_id"`
+	Actor     string         `json:"actor"`
+	Action    string         `json:"action"`
+	Summary   string         `json:"summary"`
+	Details   map[string]any `json:"details"`
+	CreatedAt int64          `json:"created_at"`
+}
+
+// Link is a URL attached to a task.
+type Link struct {
+	ID        string `json:"id"`
+	TaskID    string `json:"task_id"`
+	URL       string `json:"url"`
+	Label     string `json:"label"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+// Image is an attachment record.
+type Image struct {
+	ID         string `json:"id"`
+	TaskID     string `json:"task_id"`
+	Filename   string `json:"filename"`
+	MimeType   string `json:"mime_type"`
+	SizeBytes  int64  `json:"size_bytes"`
+	URL        string `json:"url,omitempty"`
+	UploadedAt int64  `json:"uploaded_at"`
+}
+
+// Doc is a markdown document attached to a task.
+type Doc struct {
+	ID        string `json:"id"`
+	TaskID    string `json:"task_id"`
+	Title     string `json:"title"`
+	URL       string `json:"url,omitempty"`
+	Content   string `json:"content,omitempty"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+// ─── Agent endpoints ────────────────────────────────────────────────────
+
+type RegisterAgentInput struct {
+	Name string `json:"name"`
+}
+
+type RegisterAgentOutput struct {
+	Agent Agent  `json:"agent"`
+	Token string `json:"token"`
+}
+
+func (c *Client) RegisterAgent(in RegisterAgentInput) (*RegisterAgentOutput, error) {
+	var out RegisterAgentOutput
+	if err := c.do("POST", "/api/v1/agents/register", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) GetStatus() (*ServerStatus, error) {
+	var out ServerStatus
+	if err := c.do("GET", "/api/v1/status", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ─── Project endpoints ──────────────────────────────────────────────────
+
+type CreateProjectInput struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+func (c *Client) CreateProject(in CreateProjectInput) (*Project, error) {
+	var out Project
+	if err := c.do("POST", "/api/v1/projects", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+type listProjectsResp struct {
+	Projects []Project `json:"projects"`
+}
+
+func (c *Client) ListProjects() ([]Project, error) {
+	var out listProjectsResp
+	if err := c.do("GET", "/api/v1/projects", nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Projects, nil
+}
+
+// ─── Task endpoints ─────────────────────────────────────────────────────
+
+type CreateTaskInput struct {
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Type        string   `json:"type"`
+	Priority    int      `json:"priority"`
+	Labels      []string `json:"labels,omitempty"`
+	// AutoStart, when true, creates the task directly in 'start' rather
+	// than 'pending'. Omitted = pending (the server default).
+	AutoStart *bool `json:"auto_start,omitempty"`
+}
+
+func (c *Client) CreateTask(projectIDOrName string, in CreateTaskInput) (*Task, error) {
+	var out Task
+	path := fmt.Sprintf("/api/v1/projects/%s/tasks", url.PathEscape(projectIDOrName))
+	if err := c.do("POST", path, in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+type listTaskEventsResp struct {
+	Events []TaskEvent `json:"events"`
+}
+
+func (c *Client) ListTaskEvents(taskID string) ([]TaskEvent, error) {
+	var out listTaskEventsResp
+	path := fmt.Sprintf("/api/v1/tasks/%s/events", url.PathEscape(taskID))
+	if err := c.do("GET", path, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Events, nil
+}
+
+type listTasksResp struct {
+	Tasks []Task `json:"tasks"`
+}
+
+type ListTaskOptions struct {
+	Owner     string
+	Unclaimed bool
+	Labels    []string
+}
+
+func (c *Client) ListTasks(projectIDOrName string, states []string, opts ...ListTaskOptions) ([]Task, error) {
+	path := fmt.Sprintf("/api/v1/projects/%s/tasks", url.PathEscape(projectIDOrName))
+	q := url.Values{}
+	if len(states) > 0 {
+		q.Set("state", strings.Join(states, ","))
+	}
+	if len(opts) > 0 {
+		if opts[0].Owner != "" {
+			q.Set("owner", opts[0].Owner)
+		}
+		if opts[0].Unclaimed {
+			q.Set("unclaimed", "true")
+		}
+		for _, label := range opts[0].Labels {
+			q.Add("label", label)
+		}
+	}
+	if encoded := q.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	var out listTasksResp
+	if err := c.do("GET", path, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Tasks, nil
+}
+
+func (c *Client) SearchTasks(projectIDOrName, query string, limit int) ([]Task, error) {
+	path := fmt.Sprintf("/api/v1/projects/%s/tasks/search", url.PathEscape(projectIDOrName))
+	q := url.Values{}
+	q.Set("q", query)
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	path += "?" + q.Encode()
+	var out listTasksResp
+	if err := c.do("GET", path, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Tasks, nil
+}
+
+type ListRunnableOptions struct {
+	Labels []string
+}
+
+func (c *Client) ListRunnableTasks(projectIDOrName string, opts ...ListRunnableOptions) ([]Task, error) {
+	path := fmt.Sprintf("/api/v1/projects/%s/tasks/runnable", url.PathEscape(projectIDOrName))
+	if len(opts) > 0 {
+		q := url.Values{}
+		for _, label := range opts[0].Labels {
+			q.Add("label", label)
+		}
+		if encoded := q.Encode(); encoded != "" {
+			path += "?" + encoded
+		}
+	}
+	var out listTasksResp
+	if err := c.do("GET", path, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Tasks, nil
+}
+
+type nextTaskResp struct {
+	Task *Task `json:"task"`
+}
+
+type NextTaskOptions struct {
+	Claim  bool
+	Lease  string
+	Labels []string
+}
+
+// NextRunnableTask returns the highest-priority runnable task or nil if none.
+func (c *Client) NextRunnableTask(projectIDOrName string, opts ...NextTaskOptions) (*Task, error) {
+	path := fmt.Sprintf("/api/v1/projects/%s/tasks/next", url.PathEscape(projectIDOrName))
+	if len(opts) > 0 {
+		q := url.Values{}
+		if opts[0].Claim {
+			q.Set("claim", "true")
+		}
+		if opts[0].Lease != "" {
+			q.Set("lease", opts[0].Lease)
+		}
+		for _, label := range opts[0].Labels {
+			q.Add("label", label)
+		}
+		if encoded := q.Encode(); encoded != "" {
+			path += "?" + encoded
+		}
+	}
+	var out nextTaskResp
+	if err := c.do("GET", path, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Task, nil
+}
+
+func (c *Client) GetTask(id string) (*Task, error) {
+	var out Task
+	path := fmt.Sprintf("/api/v1/tasks/%s", url.PathEscape(id))
+	if err := c.do("GET", path, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+type UpdateTaskInput struct {
+	Title             *string   `json:"title,omitempty"`
+	Description       *string   `json:"description,omitempty"`
+	DescriptionAppend *string   `json:"description_append,omitempty"`
+	Type              *string   `json:"type,omitempty"`
+	State             *string   `json:"state,omitempty"`
+	Priority          *int      `json:"priority,omitempty"`
+	Labels            *[]string `json:"labels,omitempty"`
+	LabelOps          *LabelOps `json:"label_ops,omitempty"`
+	IfState           *string   `json:"if_state,omitempty"`
+	Force             bool      `json:"force,omitempty"`
+}
+
+type LabelOps struct {
+	Add    []string `json:"add,omitempty"`
+	Remove []string `json:"remove,omitempty"`
+}
+
+func (c *Client) UpdateTask(id string, in UpdateTaskInput) (*Task, error) {
+	var out Task
+	path := fmt.Sprintf("/api/v1/tasks/%s", url.PathEscape(id))
+	if err := c.do("PATCH", path, in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteTask(id string) error {
+	path := fmt.Sprintf("/api/v1/tasks/%s", url.PathEscape(id))
+	return c.do("DELETE", path, nil, nil)
+}
+
+type ClaimTaskInput struct {
+	Lease string `json:"lease,omitempty"`
+}
+
+func (c *Client) ClaimTask(id string, in ClaimTaskInput) (*Task, error) {
+	var out Task
+	path := fmt.Sprintf("/api/v1/tasks/%s/claim", url.PathEscape(id))
+	if err := c.do("POST", path, in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+type HeartbeatTaskInput struct {
+	Lease string `json:"lease,omitempty"`
+}
+
+func (c *Client) HeartbeatTask(id string, in HeartbeatTaskInput) (*Task, error) {
+	var out Task
+	path := fmt.Sprintf("/api/v1/tasks/%s/heartbeat", url.PathEscape(id))
+	if err := c.do("POST", path, in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+type ReleaseTaskInput struct {
+	Force bool `json:"force,omitempty"`
+}
+
+func (c *Client) ReleaseTask(id string, in ReleaseTaskInput) (*Task, error) {
+	var out Task
+	path := fmt.Sprintf("/api/v1/tasks/%s/release", url.PathEscape(id))
+	if err := c.do("POST", path, in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+type addDepReq struct {
+	DependsOn string `json:"depends_on"`
+}
+
+func (c *Client) AddDependency(taskID, dependsOnID string) error {
+	path := fmt.Sprintf("/api/v1/tasks/%s/deps", url.PathEscape(taskID))
+	return c.do("POST", path, addDepReq{DependsOn: dependsOnID}, nil)
+}
+
+func (c *Client) DeleteDependency(taskID, dependsOnID string) error {
+	path := fmt.Sprintf(
+		"/api/v1/tasks/%s/deps/%s",
+		url.PathEscape(taskID),
+		url.PathEscape(dependsOnID),
+	)
+	return c.do("DELETE", path, nil, nil)
+}
+
+type AddLinkInput struct {
+	URL   string `json:"url"`
+	Label string `json:"label"`
+}
+
+func (c *Client) AddLink(taskID string, in AddLinkInput) (*Link, error) {
+	var out Link
+	path := fmt.Sprintf("/api/v1/tasks/%s/links", url.PathEscape(taskID))
+	if err := c.do("POST", path, in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteLink(linkID string) error {
+	path := fmt.Sprintf("/api/v1/links/%s", url.PathEscape(linkID))
+	return c.do("DELETE", path, nil, nil)
+}
+
+type CreateDocInput struct {
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+func (c *Client) CreateDoc(taskID string, in CreateDocInput) (*Doc, error) {
+	var out Doc
+	path := fmt.Sprintf("/api/v1/tasks/%s/docs", url.PathEscape(taskID))
+	if err := c.do("POST", path, in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) GetDoc(docID string) (*Doc, error) {
+	var out Doc
+	path := fmt.Sprintf("/api/v1/docs/%s", url.PathEscape(docID))
+	if err := c.do("GET", path, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+type UpdateDocInput struct {
+	Title   *string `json:"title,omitempty"`
+	Content *string `json:"content,omitempty"`
+}
+
+func (c *Client) UpdateDoc(docID string, in UpdateDocInput) (*Doc, error) {
+	var out Doc
+	path := fmt.Sprintf("/api/v1/docs/%s", url.PathEscape(docID))
+	if err := c.do("PATCH", path, in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteDoc(docID string) error {
+	path := fmt.Sprintf("/api/v1/docs/%s", url.PathEscape(docID))
+	return c.do("DELETE", path, nil, nil)
+}
+
+func (c *Client) UploadImage(taskID, filePath string) (*Image, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	fw, err := w.CreateFormFile("file", filepath.Base(filePath))
+	if err != nil {
+		return nil, err
+	}
+	if _, err := io.Copy(fw, f); err != nil {
+		return nil, err
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+
+	path := fmt.Sprintf("%s/api/v1/tasks/%s/images", c.BaseURL, url.PathEscape(taskID))
+	req, err := http.NewRequest("POST", path, &body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("X-Taskline-Client", "cli")
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, decodeServerError(resp)
+	}
+	var out Image
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ─── plumbing ───────────────────────────────────────────────────────────
+
+func (c *Client) do(method, path string, in any, out any) error {
+	var body io.Reader
+	if in != nil {
+		raw, err := json.Marshal(in)
+		if err != nil {
+			return err
+		}
+		body = bytes.NewReader(raw)
+	}
+	req, err := http.NewRequest(method, c.BaseURL+path, body)
+	if err != nil {
+		return err
+	}
+	if in != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("X-Taskline-Client", "cli")
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return decodeServerError(resp)
+	}
+	if out == nil {
+		return nil
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+type errResp struct {
+	Error string `json:"error"`
+}
+
+func decodeServerError(resp *http.Response) error {
+	raw, _ := io.ReadAll(resp.Body)
+	var e errResp
+	if json.Unmarshal(raw, &e) == nil && e.Error != "" {
+		return fmt.Errorf("taskline %d: %s", resp.StatusCode, e.Error)
+	}
+	if msg := strings.TrimSpace(string(raw)); msg != "" {
+		return fmt.Errorf("taskline %d: %s", resp.StatusCode, msg)
+	}
+	return fmt.Errorf("taskline %d: %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+}

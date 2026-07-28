@@ -1,0 +1,22 @@
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        # CLI output and test response helpers intentionally ignore write errors.
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*encoding/json.Encoder).Encode
+        - (net/http.ResponseWriter).Write
+        # Best-effort cleanup paths; substantive close failures are checked inline.
+        - (io.ReadCloser).Close
+        - (io.WriteCloser).Close
+        - (*os.File).Close
+        - (*database/sql.Rows).Close
+        - (*database/sql.Tx).Rollback
+        - (*database/sql.DB).Close
+        - (*text/tabwriter.Writer).Flush
+        - (*github.com/cloudwego/hertz/pkg/app.RequestContext).Write
+        - (*github.com/cloudwego/hertz/pkg/app.RequestContext).WriteString

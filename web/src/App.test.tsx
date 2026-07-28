@@ -1,0 +1,443 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Project, Task } from "./lib/api";
+import App from "./App";
+
+const mocks = vi.hoisted(() => ({
+  projectKey: "taskline" as string | null,
+  viewKey: null as string | null,
+  setProjectKey: vi.fn(),
+  setViewKey: vi.fn(),
+  useProjects: vi.fn(),
+  useTasks: vi.fn(),
+}));
+
+vi.mock("nuqs", () => ({
+  useQueryState: (key: string) => {
+    if (key === "project") return [mocks.projectKey, mocks.setProjectKey];
+    if (key === "view") return [mocks.viewKey, mocks.setViewKey];
+    return [null, vi.fn()];
+  },
+}));
+
+vi.mock("./hooks/queries", () => ({
+  useProjects: mocks.useProjects,
+  useTasks: mocks.useTasks,
+}));
+
+vi.mock("./components/Sidebar", () => ({
+  Sidebar: ({
+    className,
+    onSelect,
+  }: {
+    className?: string;
+    onSelect: (project: Project) => void;
+  }) => (
+    <aside aria-label="Projects" className={className}>
+      <button type="button" onClick={() => onSelect(otherProject)}>
+        Select chanwire
+      </button>
+      Projects
+    </aside>
+  ),
+}));
+
+vi.mock("./components/KanbanBoard", () => ({
+  KanbanBoard: () => <section aria-label="Kanban board">Kanban board</section>,
+}));
+
+vi.mock("./components/GraphView", () => ({
+  GraphView: () => <section aria-label="Graph board">Graph board</section>,
+}));
+
+vi.mock("./components/TaskEditor", () => ({
+  TaskEditor: ({
+    task,
+    onClose,
+  }: {
+    task?: Task | null;
+    onClose: () => void;
+  }) => (
+    <div role="dialog" aria-label={task ? "Edit task" : "Create task"}>
+      <button type="button" onClick={onClose}>
+        Close editor
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock("./components/TaskSearchDialog", () => ({
+  TaskSearchDialog: ({
+    onClose,
+    onSelect,
+  }: {
+    onClose: () => void;
+    onSelect: (task: Task) => void;
+  }) => (
+    <div role="dialog" aria-label="Search tasks">
+      <button type="button" onClick={() => onSelect(task)}>
+        Select existing task
+      </button>
+      <button type="button" onClick={onClose}>
+        Close search
+      </button>
+    </div>
+  ),
+}));
+
+const project: Project = {
+  id: "project-1",
+  name: "taskline",
+  description: "Agent board",
+  created_at: 1780051741142,
+  updated_at: 1780051741142,
+};
+
+const otherProject: Project = {
+  id: "project-2",
+  name: "chanwire",
+  description: "Channel board",
+  created_at: 1780051741142,
+  updated_at: 1780051741142,
+};
+
+const task: Task = {
+  id: "task-1",
+  project_id: project.id,
+  title: "Existing task",
+  description: "",
+  type: "feature",
+  state: "start",
+  priority: 1,
+  labels: [],
+  depends_on: [],
+  links: [],
+  images: [],
+  created_at: 1780051741142,
+  updated_at: 1780051741142,
+};
+
+function renderApp() {
+  mocks.useProjects.mockReturnValue({
+    data: [project, otherProject],
+    isSuccess: true,
+  });
+  mocks.useTasks.mockReturnValue({
+    data: [task],
+  });
+  return render(<App />);
+}
+
+function stubNarrowViewport(matches: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockImplementation((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+  );
+}
+
+describe("App workspace layout", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.projectKey = "taskline";
+    mocks.viewKey = null;
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("uses zh-CN labels when the browser locale is Chinese", () => {
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      language: "zh-CN",
+      languages: ["zh-CN", "zh"],
+    });
+
+    renderApp();
+
+    expect(screen.getByRole("button", { name: "看板" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "依赖图" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "+ 新建任务" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "搜索任务" })).toBeTruthy();
+  });
+
+  it("switches from zh-CN to English without reloading", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      language: "zh-CN",
+      languages: ["zh-CN", "zh"],
+    });
+
+    renderApp();
+
+    await user.click(screen.getByRole("button", { name: "切换为 English" }));
+
+    expect(screen.getByRole("button", { name: "Kanban" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Graph" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "+ New" })).toBeTruthy();
+  });
+
+  it("places board controls in the project title bar", () => {
+    renderApp();
+
+    const main = screen.getByRole("main");
+    const heading = screen.getByRole("heading", { level: 2, name: "taskline" });
+    const header = heading.closest("header");
+    const kanbanButton = screen.getByRole("button", { name: "Kanban" });
+    const graphButton = screen.getByRole("button", { name: "Graph" });
+    const newTaskButton = screen.getByRole("button", { name: "+ New" });
+
+    expect(main.getAttribute("data-visual-style")).toBe("wabi-sabi");
+    expect(main.className).toContain("bg-[var(--tl-bg)]");
+    expect(heading).toBeTruthy();
+    expect(header).toBeTruthy();
+    if (!header) throw new Error("expected project header");
+    expect(screen.getByText("Agent board")).toBeTruthy();
+    expect(header.contains(kanbanButton)).toBe(true);
+    expect(header.contains(graphButton)).toBe(true);
+    expect(header.contains(newTaskButton)).toBe(true);
+    expect(screen.getByRole("region", { name: "Kanban board" }).parentElement?.className).not.toContain(
+      "pt-14"
+    );
+    expect(screen.queryByRole("button", { name: "Dependency graph" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "+ New task" })).toBeNull();
+  });
+
+  it("toggles the project sidebar from the sidebar rail", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    const heading = screen.getByRole("heading", { level: 2, name: "taskline" });
+    const header = heading.closest("header");
+    const collapseButton = screen.getByRole("button", { name: "Collapse sidebar" });
+    const sidebarShell = screen.getByRole("complementary", { name: "Projects" }).parentElement;
+
+    expect(header).toBeTruthy();
+    if (!header) throw new Error("expected project header");
+    expect(header.contains(collapseButton)).toBe(false);
+    expect(collapseButton.getAttribute("aria-expanded")).toBe("true");
+    expect(collapseButton.className).toContain("absolute");
+    expect(collapseButton.className).toContain("left-64");
+    expect(collapseButton.className).not.toContain("-translate-x-1/2");
+    expect(collapseButton.className).toContain("rounded-r-md");
+    expect(collapseButton.className).not.toContain("rounded-md");
+    expect(collapseButton.className).toContain("transition-[left,background-color,border-color,box-shadow,color]");
+    expect(sidebarShell?.className).toContain("transition-[width]");
+    expect(sidebarShell?.className).toContain("w-64");
+    expect(screen.getByRole("complementary", { name: "Projects" })).toBeTruthy();
+
+    await user.click(collapseButton);
+
+    const expandButton = screen.getByRole("button", { name: "Expand sidebar" });
+    expect(screen.queryByRole("complementary", { name: "Projects" })).toBeNull();
+    expect(header.contains(expandButton)).toBe(false);
+    expect(expandButton.getAttribute("aria-expanded")).toBe("false");
+    expect(expandButton.className).toContain("left-0");
+    expect(expandButton.className).not.toContain("-translate-x-1/2");
+    expect(expandButton.className).toContain("rounded-r-md");
+    expect(expandButton.className).not.toContain("rounded-md");
+    expect(header.className).toContain("pl-10");
+    expect(header.className).not.toContain("pl-16");
+    expect(sidebarShell?.className).toContain("w-0");
+
+    await user.click(expandButton);
+
+    expect(screen.getByRole("complementary", { name: "Projects" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Collapse sidebar" })).toBeTruthy();
+  });
+
+  it("uses responsive shell classes so the title bar remains usable on narrow screens", () => {
+    renderApp();
+
+    const heading = screen.getByRole("heading", { level: 2, name: "taskline" });
+    const header = heading.closest("header");
+    const titleGroup = heading.parentElement?.parentElement;
+    const kanbanButton = screen.getByRole("button", { name: "Kanban" });
+    const newTaskButton = screen.getByRole("button", { name: "+ New" });
+
+    expect(header?.className).toContain("flex-wrap");
+    expect(header?.className).toContain("max-sm:px-3");
+    expect(header?.className).toContain("max-sm:py-2");
+    expect(titleGroup?.className).toContain("max-sm:basis-full");
+    expect(kanbanButton.className).toContain("max-sm:px-2");
+    expect(newTaskButton.className).toContain("max-sm:px-2");
+  });
+
+  it("aligns project header actions to a shared compact height", () => {
+    renderApp();
+
+    const searchButton = screen.getByRole("button", { name: "Search tasks" });
+    const viewToggle = screen.getByLabelText("Board view");
+    const newTaskButton = screen.getByRole("button", { name: "+ New" });
+    const actionGroup = searchButton.parentElement;
+
+    expect(actionGroup?.className).toContain("items-stretch");
+    expect(actionGroup?.className).toContain("gap-1.5");
+    expect(searchButton.className).toContain("h-8");
+    expect(searchButton.className).toContain("w-8");
+    expect(viewToggle.className).toContain("h-8");
+    expect(newTaskButton.className).toContain("h-8");
+    expect(newTaskButton.className).toContain("inline-flex");
+  });
+
+  it("uses a project drawer instead of a permanent sidebar on narrow screens", async () => {
+    const user = userEvent.setup();
+    stubNarrowViewport(true);
+    renderApp();
+
+    await waitFor(() => {
+      expect(screen.queryByRole("complementary", { name: "Projects" })).toBeNull();
+    });
+
+    const expandButton = screen.getByRole("button", { name: "Expand sidebar" });
+    expect(expandButton.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByRole("heading", { level: 2, name: "taskline" }).closest("header")?.contains(expandButton)).toBe(
+      true
+    );
+
+    await user.click(expandButton);
+
+    const drawer = screen.getByRole("complementary", { name: "Projects" });
+    expect(drawer.className).toContain("w-72");
+    expect(screen.getByRole("button", { name: "Close sidebar" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Close sidebar" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("complementary", { name: "Projects" })).toBeNull();
+    });
+  });
+
+  it("closes the mobile project drawer after selecting a project", async () => {
+    const user = userEvent.setup();
+    stubNarrowViewport(true);
+    renderApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Expand sidebar" })).toBeTruthy();
+    });
+    await user.click(screen.getByRole("button", { name: "Expand sidebar" }));
+    await user.click(screen.getByRole("button", { name: "Select chanwire" }));
+
+    expect(mocks.setProjectKey).toHaveBeenCalledWith("chanwire");
+    await waitFor(() => {
+      expect(screen.queryByRole("complementary", { name: "Projects" })).toBeNull();
+    });
+  });
+
+  it("keeps the sidebar available on the welcome screen after collapsing it", async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderApp();
+
+    await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+    mocks.projectKey = null;
+    rerender(<App />);
+
+    expect(screen.getByRole("complementary", { name: "Projects" })).toBeTruthy();
+    expect(screen.getByText(/Pick a project from the sidebar/i)).toBeTruthy();
+  });
+
+  it("keeps task creation available from the graph view and Cmd+K", async () => {
+    mocks.viewKey = "graph";
+    renderApp();
+
+    expect(screen.getByRole("region", { name: "Graph board" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "+ New" })).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+
+    expect(screen.getByRole("dialog", { name: "Create task" })).toBeTruthy();
+  });
+
+  it("opens the graph view from the view query parameter", () => {
+    mocks.viewKey = "graph";
+
+    renderApp();
+
+    expect(screen.getByRole("region", { name: "Graph board" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Kanban board" })).toBeNull();
+  });
+
+  it("falls back to kanban for an unknown view query parameter", () => {
+    mocks.viewKey = "timeline";
+
+    renderApp();
+
+    expect(screen.getByRole("region", { name: "Kanban board" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Graph board" })).toBeNull();
+  });
+
+  it("writes the selected view into the URL query", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getByRole("button", { name: "Graph" }));
+
+    expect(mocks.setViewKey).toHaveBeenCalledWith("graph");
+
+    cleanup();
+    vi.clearAllMocks();
+    mocks.viewKey = "graph";
+    renderApp();
+
+    await user.click(screen.getByRole("button", { name: "Kanban" }));
+
+    expect(mocks.setViewKey).toHaveBeenCalledWith(null);
+  });
+
+  it("opens task search from the title bar and Cmd+P", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    const heading = screen.getByRole("heading", { level: 2, name: "taskline" });
+    const header = heading.closest("header");
+    const searchButton = screen.getByRole("button", { name: "Search tasks" });
+
+    expect(header).toBeTruthy();
+    if (!header) throw new Error("expected project header");
+    expect(header.contains(searchButton)).toBe(true);
+
+    await user.click(searchButton);
+    expect(screen.getByRole("dialog", { name: "Search tasks" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Close search" }));
+    expect(screen.queryByRole("dialog", { name: "Search tasks" })).toBeNull();
+
+    fireEvent.keyDown(window, { key: "p", metaKey: true });
+    expect(screen.getByRole("dialog", { name: "Search tasks" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Select existing task" }));
+    expect(screen.getByRole("dialog", { name: "Edit task" })).toBeTruthy();
+  });
+
+  it("resets workspace-local editor state but preserves the URL-backed view when the project changes", async () => {
+    mocks.viewKey = "graph";
+    const { rerender } = renderApp();
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+
+    expect(screen.getByRole("region", { name: "Graph board" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Create task" })).toBeTruthy();
+
+    mocks.projectKey = "chanwire";
+    rerender(<App />);
+
+    expect(screen.getByRole("heading", { level: 2, name: "chanwire" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Graph board" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Kanban board" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Create task" })).toBeNull();
+  });
+});

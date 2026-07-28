@@ -1,0 +1,336 @@
+// Thin REST wrapper for taskline-server. Mirrors the canonical Project /
+// Task shapes from server/api/model/model.go — keep them in sync.
+
+export type TaskState =
+  | "pending"
+  | "start"
+  | "spec"
+  | "dev"
+  | "test"
+  | "review"
+  | "done";
+
+export const STATES: TaskState[] = [
+  "pending",
+  "start",
+  "spec",
+  "dev",
+  "test",
+  "review",
+  "done",
+];
+
+export const STATE_LABELS: Record<TaskState, string> = {
+  pending: "Pending",
+  start: "Start",
+  spec: "Spec",
+  dev: "Dev",
+  test: "Test",
+  review: "Review",
+  done: "Done",
+};
+
+export type TaskType = "feature" | "bug" | "docs";
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface Agent {
+  id: string;
+  name: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ActiveClaim {
+  id: string;
+  title: string;
+  claimed_at: number;
+  claimed_for_ms: number;
+  lease_expires_at: number;
+}
+
+export interface ServerStatus {
+  ok: boolean;
+  server_time: number;
+  agent?: Agent;
+  active_tasks: ActiveClaim[];
+}
+
+export interface Task {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string;
+  type: TaskType;
+  state: TaskState;
+  priority: number;
+  labels: string[];
+  owner?: string;
+  claimed_at?: number;
+  lease_expires_at?: number;
+  completed_at?: number;
+  depends_on?: string[];
+  images?: TaskImage[];
+  docs?: TaskDoc[];
+  links?: TaskLink[];
+  created_at: number;
+  updated_at: number;
+}
+
+export interface TaskEvent {
+  id: string;
+  task_id: string;
+  actor: string;
+  action: string;
+  summary: string;
+  details: Record<string, unknown>;
+  created_at: number;
+}
+
+export interface TaskImage {
+  id: string;
+  task_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  url?: string;
+  uploaded_at: number;
+}
+
+export interface TaskDoc {
+  id: string;
+  task_id: string;
+  title: string;
+  url?: string;
+  content?: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface TaskLink {
+  id: string;
+  task_id: string;
+  url: string;
+  label: string;
+  created_at: number;
+}
+
+class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<T> {
+  const res = await fetch(path, {
+    method,
+    headers: {
+      "X-Taskline-Client": "web",
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw await readApiError(res);
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+async function readApiError(res: Response): Promise<ApiError> {
+  let msg = res.statusText;
+  try {
+    const j = (await res.json()) as { error?: string };
+    if (j?.error) msg = j.error;
+  } catch {
+    // body wasn't JSON; keep statusText
+  }
+  return new ApiError(res.status, msg);
+}
+
+// ─── Projects ──────────────────────────────────────────────────────────
+
+export async function listProjects(): Promise<Project[]> {
+  const r = await request<{ projects: Project[] }>("GET", "/api/v1/projects");
+  return r.projects ?? [];
+}
+
+export async function createProject(
+  name: string,
+  description: string
+): Promise<Project> {
+  return request<Project>("POST", "/api/v1/projects", { name, description });
+}
+
+// ─── Tasks ─────────────────────────────────────────────────────────────
+
+export async function listTasks(projectIdOrName: string): Promise<Task[]> {
+  const r = await request<{ tasks: Task[] }>(
+    "GET",
+    `/api/v1/projects/${encodeURIComponent(projectIdOrName)}/tasks`
+  );
+  return r.tasks ?? [];
+}
+
+export async function searchTasks(
+  projectIdOrName: string,
+  query: string,
+  limit = 20
+): Promise<Task[]> {
+  const params = new URLSearchParams({ q: query });
+  if (limit > 0) params.set("limit", String(limit));
+  const r = await request<{ tasks: Task[] }>(
+    "GET",
+    `/api/v1/projects/${encodeURIComponent(projectIdOrName)}/tasks/search?${params.toString()}`
+  );
+  return r.tasks ?? [];
+}
+
+export async function createTask(
+  projectIdOrName: string,
+  input: {
+    title: string;
+    description?: string;
+    type: TaskType;
+    priority: number;
+    labels?: string[];
+    auto_start?: boolean;
+  }
+): Promise<Task> {
+  return request<Task>(
+    "POST",
+    `/api/v1/projects/${encodeURIComponent(projectIdOrName)}/tasks`,
+    input
+  );
+}
+
+export async function listTaskEvents(taskId: string): Promise<TaskEvent[]> {
+  const response = await request<{ events: TaskEvent[] }>(
+    "GET",
+    `/api/v1/tasks/${encodeURIComponent(taskId)}/events`
+  );
+  return response.events ?? [];
+}
+
+export async function updateTask(
+  id: string,
+  patch: Partial<
+    Pick<Task, "title" | "description" | "type" | "state" | "priority" | "labels">
+  >
+): Promise<Task> {
+  return request<Task>("PATCH", `/api/v1/tasks/${encodeURIComponent(id)}`, patch);
+}
+
+export async function deleteTask(id: string): Promise<void> {
+  await request<unknown>("DELETE", `/api/v1/tasks/${encodeURIComponent(id)}`);
+}
+
+export async function uploadTaskImage(
+  taskId: string,
+  file: File
+): Promise<TaskImage> {
+  const body = new FormData();
+  body.append("file", file);
+  const res = await fetch(
+    `/api/v1/tasks/${encodeURIComponent(taskId)}/images`,
+    {
+      method: "POST",
+      headers: { "X-Taskline-Client": "web" },
+      body,
+    }
+  );
+  if (!res.ok) throw await readApiError(res);
+  return (await res.json()) as TaskImage;
+}
+
+export function taskImageURL(imageId: string): string {
+  return `/api/v1/images/${encodeURIComponent(imageId)}`;
+}
+
+export async function deleteTaskImage(imageId: string): Promise<void> {
+  await request<unknown>("DELETE", taskImageURL(imageId));
+}
+
+export async function createTaskDoc(
+  taskId: string,
+  input: { title: string; content: string }
+): Promise<TaskDoc> {
+  return request<TaskDoc>(
+    "POST",
+    `/api/v1/tasks/${encodeURIComponent(taskId)}/docs`,
+    input
+  );
+}
+
+export async function getTaskDoc(docId: string): Promise<TaskDoc> {
+  return request<TaskDoc>("GET", `/api/v1/docs/${encodeURIComponent(docId)}`);
+}
+
+export async function updateTaskDoc(
+  docId: string,
+  patch: { title?: string; content?: string }
+): Promise<TaskDoc> {
+  return request<TaskDoc>(
+    "PATCH",
+    `/api/v1/docs/${encodeURIComponent(docId)}`,
+    patch
+  );
+}
+
+export function taskDocContentURL(docId: string): string {
+  return `/api/v1/docs/${encodeURIComponent(docId)}/content`;
+}
+
+export async function deleteTaskDoc(docId: string): Promise<void> {
+  await request<unknown>("DELETE", `/api/v1/docs/${encodeURIComponent(docId)}`);
+}
+
+export async function addDependency(
+  taskId: string,
+  dependsOn: string
+): Promise<void> {
+  await request<unknown>(
+    "POST",
+    `/api/v1/tasks/${encodeURIComponent(taskId)}/deps`,
+    { depends_on: dependsOn }
+  );
+}
+
+export async function deleteDependency(
+  taskId: string,
+  dependsOn: string
+): Promise<void> {
+  await request<unknown>(
+    "DELETE",
+    `/api/v1/tasks/${encodeURIComponent(taskId)}/deps/${encodeURIComponent(dependsOn)}`
+  );
+}
+
+export async function addLink(
+  taskId: string,
+  url: string,
+  label: string
+): Promise<TaskLink> {
+  return request<TaskLink>(
+    "POST",
+    `/api/v1/tasks/${encodeURIComponent(taskId)}/links`,
+    { url, label }
+  );
+}
+
+export async function deleteLink(linkId: string): Promise<void> {
+  await request<unknown>(
+    "DELETE",
+    `/api/v1/links/${encodeURIComponent(linkId)}`
+  );
+}
+
+export { ApiError };

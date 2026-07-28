@@ -1,0 +1,186 @@
+# Product
+
+RunEngram is verified engineering memory for coding agents.
+
+For implementation details see [`ARCHITECTURE.md`](./ARCHITECTURE.md). For
+repository conventions see [`AGENTS.md`](./AGENTS.md).
+
+## The problem
+
+Coding agents can accelerate one task while leaving the engineering system no
+smarter afterward.
+
+A developer explains the same architecture boundaries in a new session.
+Another agent searches the same entry points and repeats the same failed
+commands. A useful workaround remains inside a transcript. A board records
+that work moved from development to done, but none of that verified experience
+improves the next task.
+
+This creates four costs:
+
+1. **Repeated context:** requirements, constraints, and decisions must be
+   reconstructed for every run.
+2. **Repeated exploration:** agents rediscover code paths, dependencies, and
+   valid verification commands.
+3. **Untrusted memory:** raw transcripts mix facts, guesses, obsolete code, and
+   environment-specific accidents.
+4. **Invisible value:** teams can measure task counts but not exploration,
+   rework, or manual effort saved by AI.
+
+## Product thesis
+
+Every agent run should leave verified, reusable engineering memory.
+
+RunEngram connects four records:
+
+```text
+Work -> Run -> Evidence -> Learning
+  ^                           |
+  +---------------------------+
+```
+
+- **Work** captures the desired outcome, scope, dependencies, priority, and
+  acceptance criteria.
+- **Run** captures who or what executed the work, which context it received,
+  and how execution progressed.
+- **Evidence** captures code changes, tests, reviews, commands, and observable
+  results.
+- **Learning** captures only reusable conclusions with provenance, scope,
+  freshness, and invalidation rules.
+
+The loop matters more than any individual screen. Kanban is one view over work;
+it is not the product.
+
+## Current product boundary
+
+The current alpha ships the **task execution kernel**:
+
+- a canonical seven-state workflow;
+- a dependency DAG and server-side runnable ordering;
+- atomic claims, leases, heartbeats, and recovery;
+- Markdown documents, images, links, and labels;
+- append-only task operation history;
+- GitHub PR, review, and CI evidence gates;
+- JSON-first CLI and an agent-facing skill;
+- an embedded bilingual web UI;
+- local SQLite and filesystem storage.
+
+The current binary and environment-variable names retain `taskline` for
+compatibility. RunEngram is the public product name.
+
+The alpha does **not** yet claim to provide complete reusable engineering
+memory. Context snapshots, exploration capsules, learning promotion, and
+learning-lift measurement are roadmap capabilities.
+
+## Product principles
+
+### 1. Agent-compatible, human-legible
+
+Agents need stable JSON, deterministic exit codes, explicit state, and cheap
+queries. Humans need readable Markdown, visible dependencies, explainable
+history, and a small number of useful views. Both operate on the same model.
+
+### 2. Evidence before memory
+
+Transcripts are inputs, not truth. A reusable learning must preserve:
+
+- source run and source task;
+- project and module scope;
+- supporting verification;
+- relevant code or dependency fingerprint;
+- expiration or invalidation condition.
+
+If a claim cannot explain why it is trusted and when it becomes stale, it must
+not be injected automatically.
+
+### 3. Local-first by default
+
+One service and one SQLite file should be enough for a developer or small team
+pilot. No Redis, PostgreSQL, vector database, or cloud account is required.
+Project source and private task documents stay under the operator's control.
+
+### 4. Tool and SOP agnostic
+
+RunEngram coordinates work around coding agents; it does not own their internal
+reasoning process. Codex, Claude Code, Cursor, custom agents, and team SOPs can
+map their local phases onto the same work protocol.
+
+### 5. Reversible work, append-only evidence
+
+Real work moves backward. Review can reveal a defect; testing can invalidate a
+design assumption. Workflow state may move between known stages, while task
+history and evidence remain append-only and explain why the move happened.
+
+### 6. Small protocol, extensible learning
+
+The task protocol stays compact:
+
+`pending → start → spec → dev → test → review → done`
+
+Learning assets may grow by type, but they must not require every team to adopt
+the same development SOP.
+
+## Why these seven states
+
+- `pending`: recorded but not runnable;
+- `start`: clear enough to claim;
+- `spec`: requirements, UX, scope, and acceptance criteria;
+- `dev`: technical design and implementation;
+- `test`: local build, tests, and regression verification;
+- `review`: PR, review conversations, and CI;
+- `done`: delivery evidence satisfies the configured gate.
+
+A separate `blocked` state is unnecessary when an unfinished dependency
+already makes work non-runnable. A task needing human input can retain its
+current state, evidence, and explicit dependency without creating a second
+source of truth.
+
+## Learning model
+
+The intended learning path has four levels:
+
+1. **Run artifact:** task-specific description, document, command, or result.
+2. **Learning note:** candidate reusable insight with source and scope.
+3. **Project knowledge:** reviewed context available to future tasks.
+4. **Enforced knowledge:** skill, lint rule, test, template, or workflow gate.
+
+Promotion is explicit. One successful run should not silently change team-wide
+behavior. Repeated evidence increases confidence; conflicts require review.
+
+## Success metrics
+
+RunEngram succeeds only when developers feel less repeated work. Useful pilot
+metrics include:
+
+- time from task claim to first valid implementation change;
+- repeated code-search and failed-command count;
+- number of context clarification turns;
+- reopen or rollback rate after review;
+- manual interventions per completed task;
+- percentage of runs reusing a verified learning;
+- time saved when reused context is fresh;
+- stale-learning rejection rate.
+
+Task throughput alone is not enough. Faster output with higher rework is not a
+learning improvement.
+
+## Non-goals
+
+- replacing GitHub, GitLab, CI, or code review;
+- replacing a coding agent or prescribing one universal SOP;
+- storing complete hidden reasoning or treating transcripts as authoritative;
+- autonomous team-wide rule changes without review;
+- becoming a general-purpose Jira or enterprise portfolio manager;
+- requiring a hosted SaaS control plane for local use.
+
+## Roadmap order
+
+1. Stabilize one-task execution, evidence, recovery, and public installation.
+2. Add immutable context snapshots and freshness fingerprints.
+3. Add verified exploration capsules and task-level reuse.
+4. Add learning-note review and promotion.
+5. Add learning-lift measurement.
+6. Add optional small-team synchronization without weakening local-first use.
+
+Each phase must demonstrate reduced repeated work before the next layer earns
+more complexity.

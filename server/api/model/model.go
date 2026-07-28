@@ -1,0 +1,177 @@
+package model
+
+import "errors"
+
+// TaskType is the kind of work a task represents.
+type TaskType string
+
+const (
+	TaskTypeFeature TaskType = "feature"
+	TaskTypeBug     TaskType = "bug"
+	TaskTypeDocs    TaskType = "docs"
+)
+
+func (t TaskType) Valid() bool {
+	switch t {
+	case TaskTypeFeature, TaskTypeBug, TaskTypeDocs:
+		return true
+	}
+	return false
+}
+
+// TaskState is the current position in the workflow.
+type TaskState string
+
+const (
+	// StatePending is a parking lot — created but explicitly not yet
+	// runnable. ListRunnableTasks skips it.
+	StatePending TaskState = "pending"
+	StateStart   TaskState = "start"
+	StateSpec    TaskState = "spec"
+	StateDev     TaskState = "dev"
+	StateTest    TaskState = "test"
+	StateReview  TaskState = "review"
+	StateDone    TaskState = "done"
+)
+
+// stateOrder reflects the canonical workflow position. Transitions are
+// validated for state membership only — movement in either direction is
+// allowed, since work sometimes legitimately needs to drop back (e.g. a
+// review surfaces a bug that must return to dev). 'pending' lives off to
+// the side of the main pipeline; any state may drop into it.
+var stateOrder = map[TaskState]int{
+	StatePending: -1,
+	StateStart:   0,
+	StateSpec:    1,
+	StateDev:     2,
+	StateTest:    3,
+	StateReview:  4,
+	StateDone:    5,
+}
+
+func (s TaskState) Valid() bool {
+	_, ok := stateOrder[s]
+	return ok
+}
+
+// CanTransitionTo returns nil if moving from s to next is allowed.
+// Backward moves are permitted; only invalid state names are rejected.
+func (s TaskState) CanTransitionTo(next TaskState) error {
+	if !s.Valid() {
+		return errors.New("invalid current state")
+	}
+	if !next.Valid() {
+		return errors.New("invalid next state")
+	}
+	return nil
+}
+
+// IsTerminal reports whether the task is in its final state.
+func (s TaskState) IsTerminal() bool { return s == StateDone }
+
+// Project is a workspace that owns tasks.
+type Project struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	CreatedAt   int64  `json:"created_at"`
+	UpdatedAt   int64  `json:"updated_at"`
+}
+
+// Agent is a local worker identity used to derive task claim ownership.
+type Agent struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+// ActiveClaim is the compact task shape exposed by the authenticated status
+// endpoint. It intentionally omits task details and attachments.
+type ActiveClaim struct {
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	ClaimedAt      int64  `json:"claimed_at"`
+	ClaimedForMS   int64  `json:"claimed_for_ms"`
+	LeaseExpiresAt int64  `json:"lease_expires_at"`
+}
+
+// ServerStatus proves server reachability and, when authenticated, agent
+// identity plus currently live claims.
+type ServerStatus struct {
+	OK          bool          `json:"ok"`
+	ServerTime  int64         `json:"server_time"`
+	Agent       *Agent        `json:"agent,omitempty"`
+	ActiveTasks []ActiveClaim `json:"active_tasks"`
+}
+
+// Task is the unit of work tracked under a project.
+type Task struct {
+	ID             string    `json:"id"`
+	ProjectID      string    `json:"project_id"`
+	Title          string    `json:"title"`
+	Description    string    `json:"description"`
+	Type           TaskType  `json:"type"`
+	State          TaskState `json:"state"`
+	Priority       int       `json:"priority"`
+	Labels         []string  `json:"labels"`
+	Owner          string    `json:"owner"`
+	ClaimedAt      int64     `json:"claimed_at"`
+	LeaseExpiresAt int64     `json:"lease_expires_at"`
+	CompletedAt    int64     `json:"completed_at"`
+	DependsOn      []string  `json:"depends_on,omitempty"`
+	Images         []Image   `json:"images,omitempty"`
+	Docs           []Doc     `json:"docs,omitempty"`
+	Links          []Link    `json:"links,omitempty"`
+	CreatedAt      int64     `json:"created_at"`
+	UpdatedAt      int64     `json:"updated_at"`
+}
+
+// TaskEvent is one append-only mutation record for a task. Details stays
+// structured so clients can render full before/after values without parsing
+// human-readable summaries.
+type TaskEvent struct {
+	ID        string         `json:"id"`
+	TaskID    string         `json:"task_id"`
+	Actor     string         `json:"actor"`
+	Action    string         `json:"action"`
+	Summary   string         `json:"summary"`
+	Details   map[string]any `json:"details"`
+	CreatedAt int64          `json:"created_at"`
+}
+
+// Link is a URL attached to a task — typically a spec doc, PR, technical
+// note, or other artifact the agent wants to keep alongside the task.
+type Link struct {
+	ID        string `json:"id"`
+	TaskID    string `json:"task_id"`
+	URL       string `json:"url"`
+	Label     string `json:"label"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+// Doc is a Markdown document attached to a task. Task list/detail responses
+// include metadata and URL; the content field is populated only by doc-specific
+// endpoints.
+type Doc struct {
+	ID          string `json:"id"`
+	TaskID      string `json:"task_id"`
+	Title       string `json:"title"`
+	URL         string `json:"url,omitempty"`
+	Content     string `json:"content,omitempty"`
+	StoragePath string `json:"-"`
+	CreatedAt   int64  `json:"created_at"`
+	UpdatedAt   int64  `json:"updated_at"`
+}
+
+// Image is a binary attachment uploaded against a task.
+type Image struct {
+	ID          string `json:"id"`
+	TaskID      string `json:"task_id"`
+	Filename    string `json:"filename"`
+	MimeType    string `json:"mime_type"`
+	SizeBytes   int64  `json:"size_bytes"`
+	URL         string `json:"url,omitempty"`
+	StoragePath string `json:"-"`
+	UploadedAt  int64  `json:"uploaded_at"`
+}
