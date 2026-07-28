@@ -200,7 +200,7 @@ taskline learning capture --project your-project --task <task-id> \
   --scope "Requirements linked from Notion" --producer codex
 taskline learning list --project your-project --status pending
 taskline learning promote <learning-note-id> \
-  --evidence "Validated on task <task-id>; PRD generated and reviewed"
+  --evidence-file ./verified-learning.md
 taskline learning reject <learning-note-id> \
   --reason "One-off environment issue; not reusable"
 taskline capsule list --project your-project --query webview

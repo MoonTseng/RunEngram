@@ -178,7 +178,7 @@ taskline learning capture --project your-project --task <任务 ID> \
   --scope "Notion 链接需求" --producer codex
 taskline learning list --project your-project --status pending
 taskline learning promote <学习候选 ID> \
-  --evidence "已在任务 <任务 ID> 验证，PRD 生成并人工确认"
+  --evidence-file ./verified-learning.md
 taskline learning reject <学习候选 ID> \
   --reason "仅为单次环境问题，不可复用"
 taskline capsule list --project your-project --query webview
