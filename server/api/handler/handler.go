@@ -58,11 +58,14 @@ func (h *Handler) Register(s *server.Hertz) {
 	v1.GET("/projects/:project/tasks/next", h.nextRunnableTask)
 	v1.GET("/projects/:project/capsules", h.listCapsules)
 	v1.POST("/projects/:project/capsules", h.createCapsule)
+	v1.GET("/projects/:project/learning-notes", h.listProjectLearningNotes)
+	v1.POST("/projects/:project/learning-notes", h.captureLearningNote)
 	v1.GET("/projects/:project/learning-metrics", h.learningMetrics)
 
 	v1.GET("/tasks/:id", h.getTask)
 	v1.GET("/tasks/:id/context", h.taskContext)
 	v1.GET("/tasks/:id/events", h.listTaskEvents)
+	v1.GET("/tasks/:id/learning-notes", h.listTaskLearningNotes)
 	v1.PATCH("/tasks/:id", h.updateTask)
 	v1.DELETE("/tasks/:id", h.deleteTask)
 	v1.POST("/tasks/:id/claim", h.claimTask)
@@ -83,6 +86,8 @@ func (h *Handler) Register(s *server.Hertz) {
 	v1.GET("/capsules/:id", h.getCapsule)
 	v1.PATCH("/capsules/:id", h.updateCapsule)
 	v1.POST("/capsules/:id/usages", h.recordCapsuleUsage)
+	v1.POST("/learning-notes/:id/promote", h.promoteLearningNote)
+	v1.POST("/learning-notes/:id/reject", h.rejectLearningNote)
 
 	// Mount the bundled UI last so /api/* and /healthz keep their handlers.
 	if uiFS, ok := webfs.FS(); ok {
@@ -235,6 +240,123 @@ type updateCapsuleReq struct {
 	Labels       *[]string `json:"labels,omitempty"`
 	Fingerprints *[]string `json:"fingerprints,omitempty"`
 	Status       *string   `json:"status,omitempty"`
+}
+
+type captureLearningNoteReq struct {
+	SourceTaskID string   `json:"source_task_id"`
+	Kind         string   `json:"kind"`
+	Trigger      string   `json:"trigger"`
+	Guidance     string   `json:"guidance"`
+	Scope        string   `json:"scope"`
+	Labels       []string `json:"labels"`
+	Fingerprints []string `json:"fingerprints"`
+	Producer     string   `json:"producer"`
+}
+
+type promoteLearningNoteReq struct {
+	Evidence string `json:"evidence"`
+}
+
+type rejectLearningNoteReq struct {
+	Reason string `json:"reason"`
+}
+
+func (h *Handler) captureLearningNote(ctx context.Context, c *app.RequestContext) {
+	agent, ok := h.requireAgent(ctx, c)
+	if !ok {
+		return
+	}
+	ctx = service.WithActor(ctx, agent.Name)
+	var req captureLearningNoteReq
+	if err := decodeJSON(c, &req); err != nil {
+		writeError(c, http.StatusBadRequest, err)
+		return
+	}
+	note, err := h.svc.CaptureLearningNote(ctx, service.CaptureLearningNoteInput{
+		ProjectID: c.Param("project"), SourceTaskID: req.SourceTaskID,
+		AgentName: agent.Name, Kind: model.LearningNoteKind(req.Kind),
+		Trigger: req.Trigger, Guidance: req.Guidance, Scope: req.Scope,
+		Labels: req.Labels, Fingerprints: req.Fingerprints, Producer: req.Producer,
+	})
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusCreated, note)
+}
+
+func (h *Handler) listProjectLearningNotes(ctx context.Context, c *app.RequestContext) {
+	h.listLearningNotes(ctx, c, c.Param("project"), "")
+}
+
+func (h *Handler) listTaskLearningNotes(ctx context.Context, c *app.RequestContext) {
+	h.listLearningNotes(ctx, c, "", c.Param("id"))
+}
+
+func (h *Handler) listLearningNotes(
+	ctx context.Context,
+	c *app.RequestContext,
+	projectID string,
+	taskID string,
+) {
+	limit := 0
+	if raw := strings.TrimSpace(string(c.Query("limit"))); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 {
+			writeError(c, http.StatusBadRequest, errors.New("limit must be a positive integer"))
+			return
+		}
+		limit = parsed
+	}
+	notes, err := h.svc.ListLearningNotes(ctx, service.LearningNoteListInput{
+		ProjectID: projectID,
+		TaskID:    taskID,
+		Status:    model.LearningNoteStatus(strings.TrimSpace(string(c.Query("status")))),
+		Limit:     limit,
+	})
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusOK, map[string]any{"learning_notes": notes})
+}
+
+func (h *Handler) promoteLearningNote(ctx context.Context, c *app.RequestContext) {
+	agent, ok := h.requireAgent(ctx, c)
+	if !ok {
+		return
+	}
+	ctx = service.WithActor(ctx, agent.Name)
+	var req promoteLearningNoteReq
+	if err := decodeJSON(c, &req); err != nil {
+		writeError(c, http.StatusBadRequest, err)
+		return
+	}
+	note, err := h.svc.PromoteLearningNote(ctx, c.Param("id"), agent.Name, req.Evidence)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusOK, note)
+}
+
+func (h *Handler) rejectLearningNote(ctx context.Context, c *app.RequestContext) {
+	agent, ok := h.requireAgent(ctx, c)
+	if !ok {
+		return
+	}
+	ctx = service.WithActor(ctx, agent.Name)
+	var req rejectLearningNoteReq
+	if err := decodeJSON(c, &req); err != nil {
+		writeError(c, http.StatusBadRequest, err)
+		return
+	}
+	note, err := h.svc.RejectLearningNote(ctx, c.Param("id"), agent.Name, req.Reason)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusOK, note)
 }
 
 func (h *Handler) createCapsule(ctx context.Context, c *app.RequestContext) {

@@ -1199,6 +1199,107 @@ func TestExplorationCapsuleLearningLoopAtAPI(t *testing.T) {
 	require.Equal(t, 1.0, metrics.HelpfulRate)
 }
 
+func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {
+	base, stop := startServer(t)
+	defer stop()
+	ownerToken := registerAgent(t, base, "learning-owner")
+	otherToken := registerAgent(t, base, "learning-other")
+	jsonReq(t, "POST", base+"/api/v1/projects", map[string]any{"name": "automatic-learning-api"}, &project{})
+
+	var source task
+	st := jsonReq(t, "POST", base+"/api/v1/projects/automatic-learning-api/tasks",
+		map[string]any{
+			"title": "Read Notion requirement", "description": "normalize Notion PRD",
+			"type": "feature", "auto_start": true, "labels": []string{"notion"},
+		}, &source)
+	require.Equal(t, http.StatusCreated, st)
+
+	captureBody := map[string]any{
+		"source_task_id": source.ID,
+		"kind":           "human-correction",
+		"trigger":        "Notion link unreadable",
+		"guidance":       "Use one-flow/notion-to-prd",
+		"scope":          "Notion requirement analysis",
+		"labels":         []string{"notion"},
+		"fingerprints":   []string{"notion-to-prd"},
+		"producer":       "codex",
+	}
+	st = jsonReq(t, "POST", base+"/api/v1/projects/automatic-learning-api/learning-notes", captureBody, nil)
+	require.Equal(t, http.StatusUnauthorized, st)
+
+	st = jsonReqWithToken(t, "POST", base+"/api/v1/tasks/"+source.ID+"/claim",
+		map[string]any{"lease": "1h"}, &source, ownerToken)
+	require.Equal(t, http.StatusOK, st)
+
+	var note model.LearningNote
+	st = jsonReqWithToken(t, "POST", base+"/api/v1/projects/automatic-learning-api/learning-notes",
+		captureBody, &note, ownerToken)
+	require.Equal(t, http.StatusCreated, st)
+	require.Equal(t, model.LearningNotePending, note.Status)
+
+	st = jsonReqWithToken(t, "POST", base+"/api/v1/learning-notes/"+note.ID+"/promote",
+		map[string]any{"evidence": ""}, nil, ownerToken)
+	require.Equal(t, http.StatusBadRequest, st)
+	st = jsonReqWithToken(t, "POST", base+"/api/v1/learning-notes/"+note.ID+"/promote",
+		map[string]any{"evidence": "verified"}, nil, otherToken)
+	require.Equal(t, http.StatusConflict, st)
+
+	var promoted model.LearningNote
+	st = jsonReqWithToken(t, "POST", base+"/api/v1/learning-notes/"+note.ID+"/promote",
+		map[string]any{"evidence": "notion-to-prd produced normalized PRD"}, &promoted, ownerToken)
+	require.Equal(t, http.StatusOK, st)
+	require.NotEmpty(t, promoted.CapsuleID)
+
+	var projectNotes struct {
+		LearningNotes []model.LearningNote `json:"learning_notes"`
+	}
+	st = jsonReq(t, "GET", base+"/api/v1/projects/automatic-learning-api/learning-notes?status=promoted", nil, &projectNotes)
+	require.Equal(t, http.StatusOK, st)
+	require.Len(t, projectNotes.LearningNotes, 1)
+	var taskNotes struct {
+		LearningNotes []model.LearningNote `json:"learning_notes"`
+	}
+	st = jsonReq(t, "GET", base+"/api/v1/tasks/"+source.ID+"/learning-notes", nil, &taskNotes)
+	require.Equal(t, http.StatusOK, st)
+	require.Len(t, taskNotes.LearningNotes, 1)
+
+	captureBody["kind"] = "agent-recovery"
+	captureBody["trigger"] = "Fallback succeeded once"
+	captureBody["guidance"] = "Use temporary fallback"
+	var rejected model.LearningNote
+	st = jsonReqWithToken(t, "POST", base+"/api/v1/projects/automatic-learning-api/learning-notes",
+		captureBody, &rejected, ownerToken)
+	require.Equal(t, http.StatusCreated, st)
+	st = jsonReqWithToken(t, "POST", base+"/api/v1/learning-notes/"+rejected.ID+"/reject",
+		map[string]any{"reason": "not general enough"}, &rejected, ownerToken)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, model.LearningNoteRejected, rejected.Status)
+
+	var target task
+	st = jsonReq(t, "POST", base+"/api/v1/projects/automatic-learning-api/tasks",
+		map[string]any{
+			"title": "Analyze another Notion PRD", "description": "Use Notion requirement input",
+			"type": "feature", "auto_start": true, "labels": []string{"notion"},
+		}, &target)
+	require.Equal(t, http.StatusCreated, st)
+	st = jsonReqWithToken(t, "POST", base+"/api/v1/tasks/"+target.ID+"/claim",
+		map[string]any{"lease": "1h"}, &target, ownerToken)
+	require.Equal(t, http.StatusOK, st)
+	var snapshot model.ContextSnapshot
+	st = jsonReq(t, "GET", base+"/api/v1/tasks/"+target.ID+"/context", nil, &snapshot)
+	require.Equal(t, http.StatusOK, st)
+	require.Len(t, snapshot.SuggestedCapsules, 1)
+	require.Equal(t, promoted.CapsuleID, snapshot.SuggestedCapsules[0].ID)
+
+	var metrics model.LearningMetrics
+	st = jsonReq(t, "GET", base+"/api/v1/projects/automatic-learning-api/learning-metrics", nil, &metrics)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, 2, metrics.LearningNoteCount)
+	require.Equal(t, 1, metrics.PromotedNoteCount)
+	require.Equal(t, 1, metrics.RejectedNoteCount)
+	require.Equal(t, 0.5, metrics.PromotionRate)
+}
+
 func init() {
 	// Quiet Hertz banner on test stdout; failures still print stack traces.
 	_ = fmt.Sprintln
