@@ -67,16 +67,24 @@ The current alpha ships the **task execution and learning kernel**:
 - immutable task-start context snapshots;
 - verified Exploration Capsules with project scope, evidence, fingerprints,
   source task, and producer;
+- agent-driven capture of human corrections and successful recovery paths as
+  pending learning notes;
+- evidence-gated, idempotent promotion from one pending learning note to one
+  active Exploration Capsule, plus explicit rejection;
 - deterministic same-project recall;
 - observed helpful, rejected, and stale reuse outcomes plus honest aggregate
-  metrics.
+  metrics;
+- candidate, pending, promoted, rejected, and promotion-rate visibility in the
+  CLI and web Knowledge view.
 
 The current binary and environment-variable names retain `taskline` for
 compatibility. RunEngram is the public product name.
 
-The alpha does **not** yet claim automatic learning promotion or causal
-time-saved estimates. Evidence-to-rule review and richer learning-lift
-measurement remain roadmap capabilities.
+The alpha does **not** passively ingest transcripts, autonomously rewrite
+skills or tests, or claim causal time-saved estimates. Capture is driven by
+the agent skill; promotion requires explicit verification evidence. Automatic
+evidence-to-skill/test/rule enforcement and richer learning-lift measurement
+remain roadmap capabilities.
 
 ## Product principles
 
@@ -150,8 +158,12 @@ The intended learning path has four levels:
 3. **Project knowledge:** reviewed context available to future tasks.
 4. **Enforced knowledge:** skill, lint rule, test, template, or workflow gate.
 
-Promotion is explicit. One successful run should not silently change team-wide
-behavior. Repeated evidence increases confidence; conflicts require review.
+The current agent protocol automatically captures two high-signal candidate
+types: a human correction that changed execution, and an agent recovery where
+a failed path was replaced by a verified successful path. Capture alone never
+changes future behavior. Promotion is explicit, requires evidence, and creates
+one active project-memory capsule atomically. Repeated evidence increases
+confidence; conflicts require review.
 
 ## Success metrics
 
@@ -184,9 +196,12 @@ learning improvement.
 1. Stabilize one-task execution, evidence, recovery, and public installation.
 2. ✅ Add immutable context snapshots and freshness fingerprints.
 3. ✅ Add verified exploration capsules and task-level observed reuse.
-4. Add learning-note review and evidence-to-rule promotion.
-5. Add richer learning-lift measurement after pilot data exists.
-6. Add optional small-team synchronization without weakening local-first use.
+4. ✅ Add agent-driven learning-note capture, evidence-gated promotion, and
+   candidate metrics.
+5. Add optional human/team review policy and promotion into skills, tests,
+   lint rules, templates, and workflow gates.
+6. Add richer learning-lift measurement after pilot data exists.
+7. Add optional small-team synchronization without weakening local-first use.
 
 Each phase must demonstrate reduced repeated work before the next layer earns
 more complexity.

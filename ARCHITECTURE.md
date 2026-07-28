@@ -87,12 +87,22 @@ task_docs   (id, task_id → tasks.id, title, storage_path,
              created_at, updated_at)
 task_links  (id, task_id → tasks.id, url, label, created_at)
 task_events (id, task_id, actor, action, summary, details JSON, created_at)
+learning_notes
+            (id, project_id → projects.id, source_task_id,
+             kind ∈ {human-correction,agent-recovery},
+             trigger, guidance, scope, labels JSON, fingerprints JSON,
+             producer, status ∈ {pending,promoted,rejected},
+             evidence, capsule_id, rejection_reason,
+             created_at, updated_at, resolved_at)
 ```
 
 Attachment and dependency FKs use `ON DELETE CASCADE`. Cascade is what makes
 `DELETE /api/v1/tasks/:id` "just work" without app-level cleanup.
 `task_events.task_id` intentionally has no FK: append-only history remains
 queryable by task ID after the task itself is deleted.
+`learning_notes.source_task_id` also intentionally has no FK so a promoted or
+rejected learning keeps its provenance after task deletion. Its
+`project_id` does use `ON DELETE CASCADE`.
 
 Indexes:
 - `idx_tasks_project_state(project_id, state)` — list-by-state filter
@@ -102,6 +112,9 @@ Indexes:
 - `idx_task_docs_task(task_id)` — task detail doc lookup
 - `idx_task_links_task(task_id)` — task detail link lookup
 - `idx_task_events_task_created(task_id, created_at DESC)` — newest history first
+- `idx_learning_notes_project_status(project_id, status, updated_at DESC)` —
+  candidate review and metrics
+- `idx_learning_notes_task(source_task_id, created_at DESC)` — task provenance
 
 Schema lives twice: once at `server/migrations/0001_init.sql` (for tools
 that read the migration history) and once at
@@ -206,6 +219,42 @@ store remains a task persistence layer. This keeps the search feature in
 the same local-first shape as the rest of the product; a future semantic
 search feature would need an explicit persistence/indexing design rather
 than being hidden inside the current store.
+
+## Automatic learning loop
+
+Automatic learning is a controlled state machine, not transcript storage:
+
+```text
+human correction / successful recovery
+                  │
+                  ▼
+       learning note: pending
+             │             │
+   verified evidence       └── reject + reason
+             ▼
+ learning note: promoted + one active Exploration Capsule
+                                      │
+                                      ▼
+                         future same-project recall
+```
+
+Only the live owner of the source task may capture, promote, or reject its
+learning notes. Capture accepts structured `trigger`, `guidance`, `scope`,
+labels, fingerprints, and producer fields; raw conversations, secrets, and
+hidden reasoning are outside the contract.
+
+Promotion requires non-empty verification evidence. One store transaction
+updates the pending note and creates its Exploration Capsule together,
+preventing a promoted note without recallable knowledge. Repeating promotion
+is idempotent: the existing capsule is returned and no duplicate is created.
+Reject records a reason and never creates a capsule.
+
+Pending and rejected notes remain visible for audit and metrics but are never
+injected into task context. Recall continues to use active Exploration
+Capsules only. The public skill drives capture at high-signal execution
+moments and resolves candidates after test evidence exists; the server
+enforces ownership, status, evidence, and atomicity independently of any agent
+tool.
 
 ## Web UI delivery
 

@@ -207,6 +207,49 @@ func TestUpdateTaskPreservesStateEntryGuidance(t *testing.T) {
 	}
 }
 
+func TestLearningClientUsesIdentityAndStablePayload(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/projects/demo/learning-notes" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %q", r.Method)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer token-1" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		var body client.CaptureLearningNoteInput
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode input: %v", err)
+		}
+		if body.Guidance != "Use one-flow/notion-to-prd" {
+			t.Fatalf("guidance = %q", body.Guidance)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(client.LearningNote{
+			ID: "note-1", ProjectID: "demo", SourceTaskID: body.SourceTaskID,
+			Kind: body.Kind, Trigger: body.Trigger, Guidance: body.Guidance,
+			Status: "pending", Producer: "codex",
+		})
+	}))
+	defer srv.Close()
+
+	c := client.New(srv.URL)
+	c.Token = "token-1"
+	note, err := c.CaptureLearningNote("demo", client.CaptureLearningNoteInput{
+		SourceTaskID: "task-1",
+		Kind:         "human-correction",
+		Trigger:      "Notion link unreadable",
+		Guidance:     "Use one-flow/notion-to-prd",
+	})
+	if err != nil {
+		t.Fatalf("CaptureLearningNote: %v", err)
+	}
+	if note.ID != "note-1" || note.Status != "pending" {
+		t.Fatalf("unexpected note: %#v", note)
+	}
+}
+
 func TestSearchTasksClientEncodesQueryAndLimit(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

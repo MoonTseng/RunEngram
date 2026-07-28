@@ -5,6 +5,7 @@ import {
   deleteTaskDoc,
   deleteTaskImage,
   getTaskDoc,
+  listLearningNotes,
   listTaskEvents,
   searchTasks,
   STATE_LABELS,
@@ -143,6 +144,29 @@ describe("listTaskEvents", () => {
         method: "GET",
         headers: expect.objectContaining({ "X-Taskline-Client": "web" }),
       })
+    );
+  });
+});
+
+describe("listLearningNotes", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("loads filtered candidates for a project", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ learning_notes: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listLearningNotes("project-1", { status: "pending", limit: 100 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/projects/project-1/learning-notes?status=pending&limit=100",
+      expect.objectContaining({ method: "GET" })
     );
   });
 });

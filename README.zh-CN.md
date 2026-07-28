@@ -13,7 +13,8 @@ RunEngram 把研发任务、Agent 执行、验证证据和可复用项目上下�
 的项目知识。
 
 > **项目状态：早期 Alpha。** 本地任务执行、不可变上下文快照、可验证
-> Exploration Capsule、自动召回和复用效果指标已经可用；经验晋升为规则仍在路线图中。
+> Exploration Capsule、学习候选自动捕获、基于证据的晋升、自动召回和复用
+> 效果指标已经可用。
 
 ## 为什么需要 RunEngram
 
@@ -44,23 +45,30 @@ RunEngram 的目标不是再做一个项目管理看板，而是建立可验证�
 - Web UI 中英文切换。
 - 任务领取后首次读取会生成不可变 Context Snapshot，冻结任务输入和召回知识；
 - Exploration Capsule 保存来源任务、适用范围、验证证据、代码指纹和生产工具；
-- “工程记忆”视图与 CLI 展示复用任务数、有效/无效结果和有效复用率。
+- Agent Skill 会把人工纠正和成功恢复路径捕获为待验证的 Learning Note；
+- 验证后的 Learning Note 原子晋升为唯一的 Exploration Capsule，拒绝项保留审计
+  记录但不会进入召回；
+- “工程记忆”视图与 CLI 展示学习候选、晋升率、复用任务数、有效/无效结果和
+  有效复用率。
 
 当前 Alpha 版本的二进制仍使用 `taskline-server` 和 `taskline` 命令名。
 它们是 RunEngram 的任务执行内核；正式版前会完成统一命名迁移。
 
 ## RunEngram 的学习闭环
 
-下一阶段重点不是增加更多看板功能，而是让任务执行产生可复用收益：
-
 1. **Context Snapshot**：任务开始时冻结输入与本次召回的工程记忆；
-2. **Exploration Capsule**：保存验证过的结论、范围、命令、证据和代码指纹；
-3. **Observed Reuse**：记录召回知识是有效、无效还是已经过期；
-4. **Evidence to Rule**：后续把重复经验晋升为项目知识、Skill、测试或门禁；
-5. **Tool-agnostic Protocol**：允许不同 Agent 和研发 SOP 接入同一学习循环。
+2. **Learning Note**：人工纠正改变执行方案，或 Agent 从失败路径恢复成功时，
+   自动记录带来源和范围的候选经验；
+3. **Verified Promotion**：候选必须附上可检查的验证证据，之后原子晋升为唯一
+   的 Exploration Capsule；
+4. **Observed Reuse**：记录召回知识是有效、无效还是已经过期；
+5. **Evidence to Rule**：重复出现的项目知识后续可继续晋升为 Skill、测试、
+   Lint 规则、模板或工作流门禁；
+6. **Tool-agnostic Protocol**：允许不同 Agent 和研发 SOP 接入同一学习循环。
 
-原始聊天记录不是可信知识。进入项目知识前，经验必须保留来源、适用范围、
-验证证据、代码指纹和失效条件。
+这是由 Agent Skill 驱动的结构化捕获，不是后台偷录聊天。原始对话、令牌、
+密码、隐藏推理和未验证猜测不会写入项目记忆；只有晋升后的 Capsule 才会被
+后续任务召回。
 
 ## 快速开始
 
@@ -163,6 +171,16 @@ taskline-management 待规划 【需求描述】
 
 ```bash
 taskline task context <任务 ID>
+taskline learning capture --project your-project --task <任务 ID> \
+  --kind human-correction \
+  --trigger "无法直接读取 Notion 需求" \
+  --guidance "先调用 one-flow 的 notion-to-prd，再进入 PRD 分析" \
+  --scope "Notion 链接需求" --producer codex
+taskline learning list --project your-project --status pending
+taskline learning promote <学习候选 ID> \
+  --evidence-file ./verified-learning.md
+taskline learning reject <学习候选 ID> \
+  --reason "仅为单次环境问题，不可复用"
 taskline capsule list --project your-project --query webview
 taskline capsule create --project your-project --source-task <任务 ID> \
   --title "可复用边界" --summary "已经验证的结论" \
@@ -183,14 +201,16 @@ flowchart LR
     API["RunEngram API"]
     Task["任务状态、依赖、领取与历史"]
     Evidence["验证证据"]
-    Learning["上下文快照 + Exploration Capsule"]
+    Candidate["待验证 Learning Note"]
+    Learning["已验证 Exploration Capsule"]
     Store[("SQLite + Markdown")]
 
     Human --> API
     Agent --> API
     API --> Task
     Task --> Evidence
-    Evidence --> Learning
+    Evidence --> Candidate
+    Candidate -->|"验证并晋升"| Learning
     Learning --> Agent
     Task --> Store
     Evidence --> Store

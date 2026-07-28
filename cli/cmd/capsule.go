@@ -169,6 +169,9 @@ var capsuleMetricsCmd = &cobra.Command{
 		}
 		return output.Render(os.Stdout, output.Resolve(formatFlag), metrics, func(w io.Writer) {
 			fmt.Fprintf(w, "Capsules: %d active / %d total\n", metrics.ActiveCapsuleCount, metrics.CapsuleCount)
+			fmt.Fprintf(w, "Learning notes: %d pending / %d promoted / %d rejected\n",
+				metrics.PendingNoteCount, metrics.PromotedNoteCount, metrics.RejectedNoteCount)
+			fmt.Fprintf(w, "Promotion rate: %.0f%%\n", metrics.PromotionRate*100)
 			fmt.Fprintf(w, "Tasks with context: %d · tasks reusing memory: %d\n", metrics.SnapshotTaskCount, metrics.ReusedTaskCount)
 			fmt.Fprintf(w, "Helpful: %d · rejected: %d · helpful rate: %.0f%%\n",
 				metrics.HelpfulCount, metrics.RejectedCount, metrics.HelpfulRate*100)

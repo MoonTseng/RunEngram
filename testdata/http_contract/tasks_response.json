@@ -50,6 +50,32 @@
           "created_at": 1781700000006
         }
       ],
+      "learning_notes": [
+        {
+          "id": "learning-note-0001",
+          "project_id": "project-0001",
+          "source_task_id": "task-0001",
+          "kind": "human-correction",
+          "trigger": "Direct Notion fetch did not produce a normalized requirement.",
+          "guidance": "Use one-flow/notion-to-prd before requirement analysis.",
+          "scope": "Notion requirement analysis",
+          "labels": [
+            "notion",
+            "prd"
+          ],
+          "fingerprints": [
+            "notion-to-prd"
+          ],
+          "producer": "codex",
+          "status": "promoted",
+          "evidence": "Normalized PRD generated and acceptance criteria checked.",
+          "capsule_id": "capsule-0001",
+          "rejection_reason": "",
+          "created_at": 1781700000009,
+          "updated_at": 1781700000010,
+          "resolved_at": 1781700000010
+        }
+      ],
       "created_at": 1781700000007,
       "updated_at": 1781700000008
     }

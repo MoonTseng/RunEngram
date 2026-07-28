@@ -110,6 +110,101 @@ func TestTaskCreateAndState(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestLearningNotePersistenceAndTaskAttachment(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	project, err := st.CreateProject(ctx, "learning-notes", "")
+	require.NoError(t, err)
+	task, err := st.CreateTask(
+		ctx,
+		project.ID,
+		"Read Notion PRD",
+		"",
+		model.TaskTypeFeature,
+		1,
+		model.StateStart,
+	)
+	require.NoError(t, err)
+
+	note := &model.LearningNote{
+		ProjectID:    project.ID,
+		SourceTaskID: task.ID,
+		Kind:         model.LearningNoteHumanCorrection,
+		Trigger:      "Notion link was not readable",
+		Guidance:     "Use one-flow/notion-to-prd",
+		Scope:        "Notion requirement analysis",
+		Labels:       []string{"notion", "prd"},
+		Fingerprints: []string{"notion-to-prd"},
+		Producer:     "codex",
+		Status:       model.LearningNotePending,
+	}
+	require.NoError(t, st.CreateLearningNote(ctx, note))
+
+	got, err := st.GetLearningNote(ctx, note.ID)
+	require.NoError(t, err)
+	require.Equal(t, model.LearningNotePending, got.Status)
+	require.Equal(t, []string{"notion", "prd"}, got.Labels)
+
+	withDetails, err := st.GetTask(ctx, task.ID)
+	require.NoError(t, err)
+	require.Len(t, withDetails.LearningNotes, 1)
+	require.Equal(t, note.ID, withDetails.LearningNotes[0].ID)
+}
+
+func TestLearningNotePromotionIsAtomicAndIdempotent(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	project, err := st.CreateProject(ctx, "learning-promotion", "")
+	require.NoError(t, err)
+	task, err := st.CreateTask(ctx, project.ID, "Read Notion PRD", "", model.TaskTypeFeature, 1, model.StateStart)
+	require.NoError(t, err)
+	note := &model.LearningNote{
+		ProjectID: project.ID, SourceTaskID: task.ID,
+		Kind:    model.LearningNoteAgentRecovery,
+		Trigger: "Direct fetch failed", Guidance: "Use notion-to-prd",
+		Scope: "Notion requirements", Labels: []string{"notion"},
+		Fingerprints: []string{"notion-to-prd"}, Producer: "codex",
+	}
+	require.NoError(t, st.CreateLearningNote(ctx, note))
+
+	firstNote, firstCapsule, err := st.PromoteLearningNote(ctx, note.ID, "PRD generated and checked")
+	require.NoError(t, err)
+	secondNote, secondCapsule, err := st.PromoteLearningNote(ctx, note.ID, "retry")
+	require.NoError(t, err)
+	require.Equal(t, firstNote.CapsuleID, secondNote.CapsuleID)
+	require.Equal(t, firstCapsule.ID, secondCapsule.ID)
+	require.Equal(t, model.LearningNotePromoted, secondNote.Status)
+
+	capsules, err := st.ListCapsules(ctx, store.CapsuleFilter{ProjectID: project.ID})
+	require.NoError(t, err)
+	require.Len(t, capsules, 1)
+}
+
+func TestLearningNoteRejectionIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	project, err := st.CreateProject(ctx, "learning-rejection", "")
+	require.NoError(t, err)
+	task, err := st.CreateTask(ctx, project.ID, "Try recovery", "", model.TaskTypeBug, 1, model.StateStart)
+	require.NoError(t, err)
+	note := &model.LearningNote{
+		ProjectID: project.ID, SourceTaskID: task.ID,
+		Kind: model.LearningNoteAgentRecovery, Trigger: "Fallback worked once",
+		Guidance: "Use temporary fallback", Producer: "codex",
+	}
+	require.NoError(t, st.CreateLearningNote(ctx, note))
+
+	first, err := st.RejectLearningNote(ctx, note.ID, "not general enough")
+	require.NoError(t, err)
+	second, err := st.RejectLearningNote(ctx, note.ID, "retry")
+	require.NoError(t, err)
+	require.Equal(t, first.ID, second.ID)
+	require.Equal(t, "not general enough", second.RejectionReason)
+
+	_, _, err = st.PromoteLearningNote(ctx, note.ID, "late evidence")
+	require.ErrorIs(t, err, store.ErrConflict)
+}
+
 func TestStateTransitionRules(t *testing.T) {
 	// Forward jumps are allowed.
 	require.NoError(t, model.StateStart.CanTransitionTo(model.StateSpec))
@@ -933,7 +1028,7 @@ func TestMigrationsRunOnceAcrossReopens(t *testing.T) {
 
 	v1, err := readUserVersion(path)
 	require.NoError(t, err)
-	require.Equal(t, 14, v1, "first open should advance to latest schema version")
+	require.Equal(t, 15, v1, "first open should advance to latest schema version")
 
 	require.NoError(t, st1.Close())
 
@@ -1082,7 +1177,7 @@ func TestMigrationAddsDocsTypeWithoutDroppingTaskChildren(t *testing.T) {
 
 	v, err := readUserVersion(path)
 	require.NoError(t, err)
-	require.Equal(t, 14, v)
+	require.Equal(t, 15, v)
 
 	got, err := st.GetTask(ctx, "b")
 	require.NoError(t, err)
@@ -1156,7 +1251,7 @@ func TestMigrationUpgradesCreatedAndDesignRows(t *testing.T) {
 
 	v, err := readUserVersion(path)
 	require.NoError(t, err)
-	require.Equal(t, 14, v, "migration should have run through latest schema version")
+	require.Equal(t, 15, v, "migration should have run through latest schema version")
 
 	// The legacy 'created' row was renamed to 'start' during the swap.
 	ta, err := st.GetTask(ctx, "a")

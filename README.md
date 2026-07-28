@@ -17,8 +17,8 @@ one shared source of work truth and a path for turning verified experience into
 context the next task can use.
 
 > **Status: early alpha.** Local task execution, immutable context snapshots,
-> verified Exploration Capsules, recall, and observed reuse metrics work now.
-> Evidence-to-rule promotion remains roadmap work.
+> automatic learning-note capture, evidence-gated promotion, verified
+> Exploration Capsules, recall, and observed reuse metrics work now.
 
 ## Why RunEngram
 
@@ -57,8 +57,14 @@ work context -> agent run -> verified evidence -> learning -> next run
 - **Exploration Capsules:** verified findings retain source task, scope,
   evidence, fingerprints, and producer (`codex`, `claude-code`, or another
   tool).
+- **Automatic learning candidates:** the agent skill captures human
+  corrections and successful recovery paths as pending learning notes.
+- **Evidence-gated promotion:** a verified pending note is atomically promoted
+  into one active Exploration Capsule; rejected notes remain auditable and
+  never enter recall.
 - **Learning visibility:** Knowledge view and CLI show reused tasks, helpful
-  outcomes, rejected knowledge, and helpful rate without inventing time saved.
+  outcomes, learning candidates, promotion rate, rejected knowledge, and
+  helpful rate without inventing time saved.
 
 The alpha binaries still use the names `taskline-server` and `taskline`. They
 are RunEngram's task execution kernel. The public command names will be unified
@@ -66,22 +72,22 @@ before 1.0.
 
 ## Learning loop
 
-The next milestone improves future work instead of adding more board features:
-
 1. **Context Snapshot** freezes task input and recalled capsules when work
    starts.
-2. **Exploration Capsule** preserves verified findings, scope, commands,
-   evidence, and freshness fingerprints.
-3. **Observed Reuse** records whether recalled memory was helpful, rejected, or
+2. **Learning Note** captures a reusable candidate when a human correction
+   changes the agent's plan or a failed path is replaced by a successful one.
+3. **Verified Promotion** requires concrete evidence, then atomically converts
+   one pending note into one active Exploration Capsule.
+4. **Observed Reuse** records whether recalled memory was helpful, rejected, or
    stale.
-4. **Evidence to Rule** will promote repeated lessons into project knowledge,
-   skills, tests, or workflow gates.
-5. **Tool-agnostic Protocol** lets different coding agents and SOPs participate
+5. **Evidence to Rule** can later promote repeated project knowledge into a
+   skill, test, lint rule, template, or workflow gate.
+6. **Tool-agnostic Protocol** lets different coding agents and SOPs participate
    in the same learning loop.
 
-Raw transcripts are not trusted knowledge. Promoted knowledge must retain
-source, scope, verification evidence, code fingerprints, and invalidation
-conditions.
+This is agent-driven capture, not passive transcript ingestion. Raw chats,
+secrets, tokens, hidden reasoning, and unverified guesses are never copied into
+project memory. Only promoted capsules enter future-task recall.
 
 ## Quick start
 
@@ -187,6 +193,16 @@ project, the skill selects it automatically.
 
 ```bash
 taskline task context <task-id>
+taskline learning capture --project your-project --task <task-id> \
+  --kind human-correction \
+  --trigger "Notion requirement could not be read directly" \
+  --guidance "Use the one-flow notion-to-prd step before PRD analysis" \
+  --scope "Requirements linked from Notion" --producer codex
+taskline learning list --project your-project --status pending
+taskline learning promote <learning-note-id> \
+  --evidence-file ./verified-learning.md
+taskline learning reject <learning-note-id> \
+  --reason "One-off environment issue; not reusable"
 taskline capsule list --project your-project --query webview
 taskline capsule create --project your-project --source-task <task-id> \
   --title "Reusable boundary" --summary "Verified finding" \
@@ -205,14 +221,16 @@ flowchart LR
     API["RunEngram API"]
     Task["Task state, dependencies, claims, history"]
     Evidence["Verification evidence"]
-    Learning["Context snapshots + Exploration Capsules"]
+    Candidate["Pending learning notes"]
+    Learning["Verified Exploration Capsules"]
     Store[("SQLite + Markdown")]
 
     Human --> API
     Agent --> API
     API --> Task
     Task --> Evidence
-    Evidence --> Learning
+    Evidence --> Candidate
+    Candidate -->|"verify + promote"| Learning
     Learning --> Agent
     Task --> Store
     Evidence --> Store

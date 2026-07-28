@@ -64,24 +64,45 @@ type Project struct {
 
 // Task mirrors the server-side task shape.
 type Task struct {
-	ID             string   `json:"id"`
-	ProjectID      string   `json:"project_id"`
-	Title          string   `json:"title"`
-	Description    string   `json:"description"`
-	Type           string   `json:"type"`
-	State          string   `json:"state"`
-	Priority       int      `json:"priority"`
-	Labels         []string `json:"labels"`
-	Owner          string   `json:"owner"`
-	ClaimedAt      int64    `json:"claimed_at"`
-	LeaseExpiresAt int64    `json:"lease_expires_at"`
-	CompletedAt    int64    `json:"completed_at"`
-	DependsOn      []string `json:"depends_on,omitempty"`
-	Images         []Image  `json:"images,omitempty"`
-	Docs           []Doc    `json:"docs,omitempty"`
-	Links          []Link   `json:"links,omitempty"`
-	CreatedAt      int64    `json:"created_at"`
-	UpdatedAt      int64    `json:"updated_at"`
+	ID             string         `json:"id"`
+	ProjectID      string         `json:"project_id"`
+	Title          string         `json:"title"`
+	Description    string         `json:"description"`
+	Type           string         `json:"type"`
+	State          string         `json:"state"`
+	Priority       int            `json:"priority"`
+	Labels         []string       `json:"labels"`
+	Owner          string         `json:"owner"`
+	ClaimedAt      int64          `json:"claimed_at"`
+	LeaseExpiresAt int64          `json:"lease_expires_at"`
+	CompletedAt    int64          `json:"completed_at"`
+	DependsOn      []string       `json:"depends_on,omitempty"`
+	Images         []Image        `json:"images,omitempty"`
+	Docs           []Doc          `json:"docs,omitempty"`
+	Links          []Link         `json:"links,omitempty"`
+	LearningNotes  []LearningNote `json:"learning_notes,omitempty"`
+	CreatedAt      int64          `json:"created_at"`
+	UpdatedAt      int64          `json:"updated_at"`
+}
+
+type LearningNote struct {
+	ID              string   `json:"id"`
+	ProjectID       string   `json:"project_id"`
+	SourceTaskID    string   `json:"source_task_id"`
+	Kind            string   `json:"kind"`
+	Trigger         string   `json:"trigger"`
+	Guidance        string   `json:"guidance"`
+	Scope           string   `json:"scope"`
+	Labels          []string `json:"labels"`
+	Fingerprints    []string `json:"fingerprints"`
+	Producer        string   `json:"producer"`
+	Status          string   `json:"status"`
+	Evidence        string   `json:"evidence"`
+	CapsuleID       string   `json:"capsule_id"`
+	RejectionReason string   `json:"rejection_reason"`
+	CreatedAt       int64    `json:"created_at"`
+	UpdatedAt       int64    `json:"updated_at"`
+	ResolvedAt      int64    `json:"resolved_at"`
 }
 
 type ExplorationCapsule struct {
@@ -125,12 +146,28 @@ type CapsuleUsage struct {
 type LearningMetrics struct {
 	CapsuleCount       int     `json:"capsule_count"`
 	ActiveCapsuleCount int     `json:"active_capsule_count"`
+	LearningNoteCount  int     `json:"learning_note_count"`
+	PendingNoteCount   int     `json:"pending_note_count"`
+	PromotedNoteCount  int     `json:"promoted_note_count"`
+	RejectedNoteCount  int     `json:"rejected_note_count"`
 	SnapshotTaskCount  int     `json:"snapshot_task_count"`
 	ReusedTaskCount    int     `json:"reused_task_count"`
 	HelpfulCount       int     `json:"helpful_count"`
 	RejectedCount      int     `json:"rejected_count"`
 	StaleCount         int     `json:"stale_count"`
 	HelpfulRate        float64 `json:"helpful_rate"`
+	PromotionRate      float64 `json:"promotion_rate"`
+}
+
+type CaptureLearningNoteInput struct {
+	SourceTaskID string   `json:"source_task_id"`
+	Kind         string   `json:"kind"`
+	Trigger      string   `json:"trigger"`
+	Guidance     string   `json:"guidance"`
+	Scope        string   `json:"scope,omitempty"`
+	Labels       []string `json:"labels,omitempty"`
+	Fingerprints []string `json:"fingerprints,omitempty"`
+	Producer     string   `json:"producer,omitempty"`
 }
 
 type CreateCapsuleInput struct {
@@ -265,6 +302,67 @@ func (c *Client) CreateTask(projectIDOrName string, in CreateTaskInput) (*Task, 
 func (c *Client) GetTaskContext(taskID string) (*ContextSnapshot, error) {
 	var out ContextSnapshot
 	if err := c.do("GET", "/api/v1/tasks/"+url.PathEscape(taskID)+"/context", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CaptureLearningNote(
+	projectIDOrName string,
+	in CaptureLearningNoteInput,
+) (*LearningNote, error) {
+	var out LearningNote
+	path := fmt.Sprintf("/api/v1/projects/%s/learning-notes", url.PathEscape(projectIDOrName))
+	if err := c.do("POST", path, in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) ListLearningNotes(
+	projectIDOrName string,
+	taskID string,
+	status string,
+	limit int,
+) ([]LearningNote, error) {
+	var path string
+	if taskID != "" {
+		path = "/api/v1/tasks/" + url.PathEscape(taskID) + "/learning-notes"
+	} else {
+		path = fmt.Sprintf("/api/v1/projects/%s/learning-notes", url.PathEscape(projectIDOrName))
+	}
+	values := url.Values{}
+	if status != "" {
+		values.Set("status", status)
+	}
+	if limit > 0 {
+		values.Set("limit", strconv.Itoa(limit))
+	}
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	var out struct {
+		LearningNotes []LearningNote `json:"learning_notes"`
+	}
+	if err := c.do("GET", path, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.LearningNotes, nil
+}
+
+func (c *Client) PromoteLearningNote(id, evidence string) (*LearningNote, error) {
+	var out LearningNote
+	path := "/api/v1/learning-notes/" + url.PathEscape(id) + "/promote"
+	if err := c.do("POST", path, map[string]string{"evidence": evidence}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) RejectLearningNote(id, reason string) (*LearningNote, error) {
+	var out LearningNote
+	path := "/api/v1/learning-notes/" + url.PathEscape(id) + "/reject"
+	if err := c.do("POST", path, map[string]string{"reason": reason}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

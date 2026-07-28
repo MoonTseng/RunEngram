@@ -107,24 +107,25 @@ type ServerStatus struct {
 
 // Task is the unit of work tracked under a project.
 type Task struct {
-	ID             string    `json:"id"`
-	ProjectID      string    `json:"project_id"`
-	Title          string    `json:"title"`
-	Description    string    `json:"description"`
-	Type           TaskType  `json:"type"`
-	State          TaskState `json:"state"`
-	Priority       int       `json:"priority"`
-	Labels         []string  `json:"labels"`
-	Owner          string    `json:"owner"`
-	ClaimedAt      int64     `json:"claimed_at"`
-	LeaseExpiresAt int64     `json:"lease_expires_at"`
-	CompletedAt    int64     `json:"completed_at"`
-	DependsOn      []string  `json:"depends_on,omitempty"`
-	Images         []Image   `json:"images,omitempty"`
-	Docs           []Doc     `json:"docs,omitempty"`
-	Links          []Link    `json:"links,omitempty"`
-	CreatedAt      int64     `json:"created_at"`
-	UpdatedAt      int64     `json:"updated_at"`
+	ID             string         `json:"id"`
+	ProjectID      string         `json:"project_id"`
+	Title          string         `json:"title"`
+	Description    string         `json:"description"`
+	Type           TaskType       `json:"type"`
+	State          TaskState      `json:"state"`
+	Priority       int            `json:"priority"`
+	Labels         []string       `json:"labels"`
+	Owner          string         `json:"owner"`
+	ClaimedAt      int64          `json:"claimed_at"`
+	LeaseExpiresAt int64          `json:"lease_expires_at"`
+	CompletedAt    int64          `json:"completed_at"`
+	DependsOn      []string       `json:"depends_on,omitempty"`
+	Images         []Image        `json:"images,omitempty"`
+	Docs           []Doc          `json:"docs,omitempty"`
+	Links          []Link         `json:"links,omitempty"`
+	LearningNotes  []LearningNote `json:"learning_notes,omitempty"`
+	CreatedAt      int64          `json:"created_at"`
+	UpdatedAt      int64          `json:"updated_at"`
 }
 
 // TaskEvent is one append-only mutation record for a task. Details stays
@@ -164,6 +165,51 @@ const (
 func (o CapsuleOutcome) Valid() bool {
 	return o == CapsuleOutcomeUsed || o == CapsuleOutcomeHelpful ||
 		o == CapsuleOutcomeRejected || o == CapsuleOutcomeStale
+}
+
+type LearningNoteKind string
+
+const (
+	LearningNoteHumanCorrection LearningNoteKind = "human-correction"
+	LearningNoteAgentRecovery   LearningNoteKind = "agent-recovery"
+)
+
+func (k LearningNoteKind) Valid() bool {
+	return k == LearningNoteHumanCorrection || k == LearningNoteAgentRecovery
+}
+
+type LearningNoteStatus string
+
+const (
+	LearningNotePending  LearningNoteStatus = "pending"
+	LearningNotePromoted LearningNoteStatus = "promoted"
+	LearningNoteRejected LearningNoteStatus = "rejected"
+)
+
+func (s LearningNoteStatus) Valid() bool {
+	return s == LearningNotePending || s == LearningNotePromoted || s == LearningNoteRejected
+}
+
+// LearningNote is an untrusted learning candidate captured from one agent run.
+// Only promoted notes become reusable Exploration Capsules.
+type LearningNote struct {
+	ID              string             `json:"id"`
+	ProjectID       string             `json:"project_id"`
+	SourceTaskID    string             `json:"source_task_id"`
+	Kind            LearningNoteKind   `json:"kind"`
+	Trigger         string             `json:"trigger"`
+	Guidance        string             `json:"guidance"`
+	Scope           string             `json:"scope"`
+	Labels          []string           `json:"labels"`
+	Fingerprints    []string           `json:"fingerprints"`
+	Producer        string             `json:"producer"`
+	Status          LearningNoteStatus `json:"status"`
+	Evidence        string             `json:"evidence"`
+	CapsuleID       string             `json:"capsule_id"`
+	RejectionReason string             `json:"rejection_reason"`
+	CreatedAt       int64              `json:"created_at"`
+	UpdatedAt       int64              `json:"updated_at"`
+	ResolvedAt      int64              `json:"resolved_at"`
 }
 
 // ExplorationCapsule is verified, reusable engineering knowledge.
@@ -209,12 +255,17 @@ type CapsuleUsage struct {
 type LearningMetrics struct {
 	CapsuleCount       int     `json:"capsule_count"`
 	ActiveCapsuleCount int     `json:"active_capsule_count"`
+	LearningNoteCount  int     `json:"learning_note_count"`
+	PendingNoteCount   int     `json:"pending_note_count"`
+	PromotedNoteCount  int     `json:"promoted_note_count"`
+	RejectedNoteCount  int     `json:"rejected_note_count"`
 	SnapshotTaskCount  int     `json:"snapshot_task_count"`
 	ReusedTaskCount    int     `json:"reused_task_count"`
 	HelpfulCount       int     `json:"helpful_count"`
 	RejectedCount      int     `json:"rejected_count"`
 	StaleCount         int     `json:"stale_count"`
 	HelpfulRate        float64 `json:"helpful_rate"`
+	PromotionRate      float64 `json:"promotion_rate"`
 }
 
 // Link is a URL attached to a task — typically a spec doc, PR, technical

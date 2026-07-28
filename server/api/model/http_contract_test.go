@@ -21,6 +21,7 @@ func TestHTTPContractFixturesRoundTripServerModels(t *testing.T) {
 	roundTripServerFixture(t, "doc.json", &Doc{})
 	roundTripServerFixture(t, "image.json", &Image{})
 	roundTripServerFixture(t, "link.json", &Link{})
+	roundTripServerFixture(t, "learning_note.json", &LearningNote{})
 	roundTripServerFixture(t, "task_events_response.json", &struct {
 		Events []TaskEvent `json:"events"`
 	}{})
@@ -35,6 +36,18 @@ func TestHTTPContractFixtureStateAndTypeAreKnown(t *testing.T) {
 	}
 	if !task.Type.Valid() {
 		t.Fatalf("fixture task type %q is not a known TaskType", task.Type)
+	}
+}
+
+func TestHTTPContractFixtureLearningNoteEnumsAreKnown(t *testing.T) {
+	var note LearningNote
+	readServerFixture(t, "learning_note.json", &note)
+
+	if !note.Kind.Valid() {
+		t.Fatalf("fixture learning note kind %q is not known", note.Kind)
+	}
+	if !note.Status.Valid() {
+		t.Fatalf("fixture learning note status %q is not known", note.Status)
 	}
 }
 

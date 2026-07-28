@@ -23,6 +23,7 @@ func TestHTTPContractFixturesRoundTripCLIModels(t *testing.T) {
 	roundTripCLIFixture(t, "doc.json", &client.Doc{})
 	roundTripCLIFixture(t, "image.json", &client.Image{})
 	roundTripCLIFixture(t, "link.json", &client.Link{})
+	roundTripCLIFixture(t, "learning_note.json", &client.LearningNote{})
 	roundTripCLIFixture(t, "task_events_response.json", &struct {
 		Events []client.TaskEvent `json:"events"`
 	}{})

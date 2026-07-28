@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import docFixture from "../../../testdata/http_contract/doc.json";
 import imageFixture from "../../../testdata/http_contract/image.json";
+import learningNoteFixture from "../../../testdata/http_contract/learning_note.json";
 import linkFixture from "../../../testdata/http_contract/link.json";
 import nextTaskResponseFixture from "../../../testdata/http_contract/next_task_response.json";
 import projectFixture from "../../../testdata/http_contract/project.json";
@@ -10,6 +11,7 @@ import taskEventsResponseFixture from "../../../testdata/http_contract/task_even
 import tasksResponseFixture from "../../../testdata/http_contract/tasks_response.json";
 import {
   STATES,
+  type LearningNote,
   type Project,
   type ServerStatus,
   type Task,
@@ -29,6 +31,7 @@ describe("canonical HTTP contract fixtures", () => {
     const doc: TaskDoc = docFixture;
     const image: TaskImage = imageFixture;
     const link: TaskLink = linkFixture;
+    const learningNote: LearningNote = learningNoteFixture as LearningNote;
     const events: TaskEvent[] = taskEventsResponseFixture.events;
 
     expect(keys(project)).toEqual([
@@ -67,6 +70,7 @@ describe("canonical HTTP contract fixtures", () => {
       "id",
       "images",
       "labels",
+      "learning_notes",
       "lease_expires_at",
       "links",
       "owner",
@@ -98,6 +102,25 @@ describe("canonical HTTP contract fixtures", () => {
       "url",
     ]);
     expect(keys(link)).toEqual(["created_at", "id", "label", "task_id", "url"]);
+    expect(keys(learningNote)).toEqual([
+      "capsule_id",
+      "created_at",
+      "evidence",
+      "fingerprints",
+      "guidance",
+      "id",
+      "kind",
+      "labels",
+      "producer",
+      "project_id",
+      "rejection_reason",
+      "resolved_at",
+      "scope",
+      "source_task_id",
+      "status",
+      "trigger",
+      "updated_at",
+    ]);
     expect(keys(events[0])).toEqual([
       "action",
       "actor",

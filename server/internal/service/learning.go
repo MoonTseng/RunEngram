@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"taskline_server/api/model"
 	"taskline_server/internal/store"
@@ -47,6 +48,258 @@ type RecordUsageInput struct {
 	TaskID    string
 	Outcome   model.CapsuleOutcome
 	Notes     string
+}
+
+type CaptureLearningNoteInput struct {
+	ProjectID    string
+	SourceTaskID string
+	AgentName    string
+	Kind         model.LearningNoteKind
+	Trigger      string
+	Guidance     string
+	Scope        string
+	Labels       []string
+	Fingerprints []string
+	Producer     string
+}
+
+type LearningNoteListInput struct {
+	ProjectID string
+	TaskID    string
+	Status    model.LearningNoteStatus
+	Limit     int
+}
+
+const (
+	maxLearningNoteTriggerRunes   = 2_000
+	maxLearningNoteGuidanceRunes  = 8_000
+	maxLearningNoteScopeRunes     = 2_000
+	maxLearningNoteEvidenceRunes  = 32_000
+	maxLearningNoteRejectionRunes = 2_000
+)
+
+func (s *Service) CaptureLearningNote(
+	ctx context.Context,
+	input CaptureLearningNoteInput,
+) (*model.LearningNote, error) {
+	input.ProjectID = strings.TrimSpace(input.ProjectID)
+	input.SourceTaskID = strings.TrimSpace(input.SourceTaskID)
+	input.AgentName = strings.TrimSpace(input.AgentName)
+	input.Trigger = strings.TrimSpace(input.Trigger)
+	input.Guidance = strings.TrimSpace(input.Guidance)
+	input.Scope = strings.TrimSpace(input.Scope)
+	input.Producer = strings.TrimSpace(input.Producer)
+	if !input.Kind.Valid() {
+		return nil, fmt.Errorf("invalid learning note kind %q", input.Kind)
+	}
+	if err := validateLearningText("trigger", input.Trigger, true, maxLearningNoteTriggerRunes); err != nil {
+		return nil, err
+	}
+	if err := validateLearningText("guidance", input.Guidance, true, maxLearningNoteGuidanceRunes); err != nil {
+		return nil, err
+	}
+	if err := validateLearningText("scope", input.Scope, false, maxLearningNoteScopeRunes); err != nil {
+		return nil, err
+	}
+	if input.Producer == "" {
+		input.Producer = "codex"
+	}
+	project, err := s.ResolveProject(ctx, input.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	task, err := s.st.GetTask(ctx, input.SourceTaskID)
+	if err != nil {
+		return nil, err
+	}
+	if task.ProjectID != project.ID {
+		return nil, fmt.Errorf("%w: source task belongs to another project", store.ErrConflict)
+	}
+	if err := requireLiveOwner(task, input.AgentName); err != nil {
+		return nil, err
+	}
+	note := &model.LearningNote{
+		ProjectID: project.ID, SourceTaskID: task.ID, Kind: input.Kind,
+		Trigger: input.Trigger, Guidance: input.Guidance, Scope: input.Scope,
+		Labels: input.Labels, Fingerprints: input.Fingerprints,
+		Producer: input.Producer, Status: model.LearningNotePending,
+	}
+	if err := s.st.CreateLearningNote(ctx, note); err != nil {
+		return nil, err
+	}
+	if err := s.recordTaskEvent(
+		ctx,
+		task.ID,
+		"learning_note_captured",
+		"Captured learning candidate",
+		map[string]any{
+			"learning_note_id": note.ID,
+			"kind":             note.Kind,
+			"trigger":          note.Trigger,
+			"guidance":         note.Guidance,
+		},
+		note.CreatedAt,
+	); err != nil {
+		return nil, err
+	}
+	return s.st.GetLearningNote(ctx, note.ID)
+}
+
+func (s *Service) ListLearningNotes(
+	ctx context.Context,
+	input LearningNoteListInput,
+) ([]model.LearningNote, error) {
+	if input.Status != "" && !input.Status.Valid() {
+		return nil, fmt.Errorf("invalid learning note status %q", input.Status)
+	}
+	if input.Limit < 0 || input.Limit > 200 {
+		return nil, errors.New("limit must be between 0 and 200")
+	}
+	projectID := strings.TrimSpace(input.ProjectID)
+	taskID := strings.TrimSpace(input.TaskID)
+	if projectID == "" && taskID == "" {
+		return nil, errors.New("project_id or task_id is required")
+	}
+	if projectID != "" {
+		project, err := s.ResolveProject(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+		projectID = project.ID
+	}
+	if taskID != "" {
+		task, err := s.st.GetTask(ctx, taskID)
+		if err != nil {
+			return nil, err
+		}
+		if projectID != "" && projectID != task.ProjectID {
+			return nil, fmt.Errorf("%w: task belongs to another project", store.ErrConflict)
+		}
+		projectID = task.ProjectID
+	}
+	return s.st.ListLearningNotes(ctx, store.LearningNoteFilter{
+		ProjectID: projectID,
+		TaskID:    taskID,
+		Status:    input.Status,
+		Limit:     input.Limit,
+	})
+}
+
+func (s *Service) PromoteLearningNote(
+	ctx context.Context,
+	id string,
+	agentName string,
+	evidence string,
+) (*model.LearningNote, error) {
+	evidence = strings.TrimSpace(evidence)
+	if err := validateLearningText("evidence", evidence, true, maxLearningNoteEvidenceRunes); err != nil {
+		return nil, err
+	}
+	before, task, err := s.learningNoteAndOwnedTask(ctx, id, agentName)
+	if err != nil {
+		return nil, err
+	}
+	note, capsule, err := s.st.PromoteLearningNote(ctx, before.ID, evidence)
+	if err != nil {
+		return nil, err
+	}
+	if before.Status == model.LearningNotePending {
+		if err := s.recordTaskEvent(
+			ctx,
+			task.ID,
+			"learning_note_promoted",
+			"Promoted verified learning candidate",
+			map[string]any{
+				"learning_note_id": note.ID,
+				"capsule_id":       capsule.ID,
+				"evidence":         note.Evidence,
+			},
+			note.ResolvedAt,
+		); err != nil {
+			return nil, err
+		}
+	}
+	return note, nil
+}
+
+func (s *Service) RejectLearningNote(
+	ctx context.Context,
+	id string,
+	agentName string,
+	reason string,
+) (*model.LearningNote, error) {
+	reason = strings.TrimSpace(reason)
+	if err := validateLearningText("reason", reason, true, maxLearningNoteRejectionRunes); err != nil {
+		return nil, err
+	}
+	before, task, err := s.learningNoteAndOwnedTask(ctx, id, agentName)
+	if err != nil {
+		return nil, err
+	}
+	note, err := s.st.RejectLearningNote(ctx, before.ID, reason)
+	if err != nil {
+		return nil, err
+	}
+	if before.Status == model.LearningNotePending {
+		if err := s.recordTaskEvent(
+			ctx,
+			task.ID,
+			"learning_note_rejected",
+			"Rejected learning candidate",
+			map[string]any{
+				"learning_note_id": note.ID,
+				"reason":           note.RejectionReason,
+			},
+			note.ResolvedAt,
+		); err != nil {
+			return nil, err
+		}
+	}
+	return note, nil
+}
+
+func (s *Service) learningNoteAndOwnedTask(
+	ctx context.Context,
+	id string,
+	agentName string,
+) (*model.LearningNote, *model.Task, error) {
+	note, err := s.st.GetLearningNote(ctx, strings.TrimSpace(id))
+	if err != nil {
+		return nil, nil, err
+	}
+	task, err := s.st.GetTask(ctx, note.SourceTaskID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := requireLiveOwner(task, agentName); err != nil {
+		return nil, nil, err
+	}
+	return note, task, nil
+}
+
+func requireLiveOwner(task *model.Task, agentName string) error {
+	agentName = strings.TrimSpace(agentName)
+	if agentName == "" {
+		return errors.New("agent identity required")
+	}
+	if task.Owner != agentName || task.LeaseExpiresAt <= time.Now().UnixMilli() {
+		return fmt.Errorf(
+			"%w: live source-task claim owned by %s required",
+			store.ErrConflict,
+			agentName,
+		)
+	}
+	return nil
+}
+
+func validateLearningText(name, value string, required bool, maxRunes int) error {
+	if required && value == "" {
+		return fmt.Errorf("%s is required", name)
+	}
+	if utf8.RuneCountInString(value) > maxRunes {
+		return fmt.Errorf("%s exceeds %d characters", name, maxRunes)
+	}
+	return nil
 }
 
 func (s *Service) CreateCapsule(ctx context.Context, input CreateCapsuleInput) (*model.ExplorationCapsule, error) {
