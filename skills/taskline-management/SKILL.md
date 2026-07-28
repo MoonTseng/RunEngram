@@ -1,22 +1,16 @@
 ---
 name: taskline-management
 description: |
-  Use whenever the user wants to track agent work as structured tasks
-  inside a project — capturing a feature, bug, or docs task, sequencing dependent
-  work, picking the next thing to pull, advancing a task through the
-  pending → start → spec → dev → test → review → done lifecycle, recording
-  progress, or asking "what's left?". Trigger phrases include "create
-  a task", "add a feature", "what should I work on next", "block this
-  task on …", "mark X as in review / done", "show me the open bugs",
-  "park this for later", and any project / kanban / backlog management
-  ask. Use even when the user doesn't say "task" or "taskline" —
-  phrases like "let's plan this", "queue this up", "track this",
-  "what's runnable now" all qualify. If the user explicitly invokes
-  this skill with no other instructions, treat it as "work the current
-  project queue" and proactively drain runnable tasks to completion.
-  Skip for one-off todo notes with no state, dependencies, or follow-up
-  — just answer those directly.
-version: 0.18.0
+  Manage structured project work through RunEngram: create feature, bug, or
+  docs tasks; plan dependencies; claim runnable work; advance the
+  pending → start → spec → dev → test → review → done lifecycle; record
+  evidence; or answer what remains. Use for requests such as "create a task",
+  "queue this", "track this", "what should I work on next", "block this on",
+  "mark this in review", or any project, kanban, backlog, or agent-workflow
+  request. Explicit "taskline-management" prompt prefixes must trigger this
+  skill. Support default create-only behavior plus run/spec/pending and
+  执行/方案/待规划 modes. When invoked without a payload, drain the current
+  project's runnable queue. Skip one-off notes with no state or follow-up.
 ---
 
 # taskline — task management for AI agents
@@ -83,6 +77,49 @@ Skip taskline when the user just wants a one-line note, a scratch
 todo, or an answer that doesn't survive past this turn — reply
 directly. taskline is the wrong tool for content that has no
 follow-up.
+
+## Prompt shorthand
+
+Treat `taskline-management` as a deterministic prompt prefix. Optional
+full-width or ASCII brackets only delimit the payload; strip them before
+creating the task.
+
+| Prompt | Required behavior |
+| --- | --- |
+| `taskline-management <requirement>` | Create one runnable task and stop. Do not claim it or modify code. |
+| `taskline-management run <requirement>` / `taskline-management 执行 <需求>` | Create, claim that exact task, read its context, and execute only that task through the stage playbook. |
+| `taskline-management spec <requirement>` / `taskline-management 方案 <需求>` | Create and claim that exact task, produce and attach the `Spec` document, then stop before code changes. |
+| `taskline-management pending <requirement>` / `taskline-management 待规划 <需求>` | Create one task with `--auto-start=false` and stop. |
+| `taskline-management` with no payload | Claim and drain the current project's runnable queue as documented below. |
+
+Resolve the project in this order:
+
+1. explicit `project:<name>` or `项目:<名称>` in the prompt;
+2. `$TASKLINE_PROJECT`;
+3. an exact, case-insensitive match between the current repository name and a
+   project returned by `taskline project list`;
+4. the only project returned by `taskline project list`;
+5. otherwise ask only for the project name.
+
+Remove the explicit project selector from the stored task description. Preserve
+the rest of the requirement text instead of compressing it into a few sentences.
+Derive a concise title from the first heading or first complete sentence. Infer
+`bug` only for an explicit defect/fix/crash request and `docs` only for a
+documentation-only request; otherwise use `feature`. Use priority `0` unless the
+prompt supplies a priority.
+
+Create-only and pending modes do not need an agent identity. Before `run`,
+`spec`, or bare queue-drain mode, run `taskline status --format json`. Register
+only when it reports `registered=false`; if no agent name was supplied and no
+valid identity exists, ask only for the agent name. Never infer or replace an
+identity silently.
+
+For `run` and `spec`, claim the ID returned by `taskline task create` with
+`taskline task claim <id>`; do not use `task next --claim`, because another
+higher-priority task may be selected. Immediately read
+`taskline task context <id>`. `run` stops after that created task completes or
+hits a real blocker; it does not drain unrelated queued work. `spec` attaches
+the `Spec` task document and stops before any source-code modification.
 
 ## Environment
 

@@ -39,6 +39,11 @@ required_sections = {
         "taskline capsule create",
         "taskline capsule use",
         "--producer claude-code",
+        "## Prompt shorthand",
+        "taskline-management <requirement>",
+        "taskline-management run <requirement>",
+        "taskline-management spec <requirement>",
+        "taskline-management 方案 <需求>",
     ],
     ".agents/skills/taskline-localtest/SKILL.md": [
         "### 1. Write the test FIRST",

@@ -1,6 +1,7 @@
 # RunEngram
 
-[English](./README.md) | **简体中文**
+[English](https://github.com/MoonTseng/RunEngram#readme) |
+[**简体中文**](https://github.com/MoonTseng/RunEngram/blob/main/README.zh-CN.md#readme)
 
 **面向 AI 编程智能体的可验证研发记忆系统。**
 
@@ -140,6 +141,25 @@ taskline status
 [`skills/taskline-management/SKILL.md`](./skills/taskline-management/SKILL.md)
 领取、推进、验证并复用工程记忆。安装脚本会把同一个 Skill 链接到
 `~/.agents/skills/` 与 `~/.claude/skills/`。
+
+### 提示词短语法
+
+直接把 Skill 名称作为提示词前缀。方括号可以省略：
+
+```text
+taskline-management 【需求描述】
+taskline-management 执行 【需求描述】
+taskline-management 方案 【需求描述】
+taskline-management 待规划 【需求描述】
+```
+
+- 默认：创建一项可执行任务，然后停止，不修改代码；
+- `执行`：创建、领取并完整执行刚创建的任务；
+- `方案`：创建、领取并生成 Spec，然后在修改代码前停止；
+- `待规划`：创建到不可领取的待规划区。
+
+只有一个 RunEngram 项目时自动选择。存在多个项目时，在提示中增加
+`项目:CamScanner`。英文别名分别为 `run`、`spec` 和 `pending`。
 
 ```bash
 taskline task context <任务 ID>

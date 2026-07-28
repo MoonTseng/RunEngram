@@ -1,6 +1,7 @@
 # RunEngram
 
-**English** | [简体中文](./README.zh-CN.md)
+[**English**](https://github.com/MoonTseng/RunEngram#readme) |
+[简体中文](https://github.com/MoonTseng/RunEngram/blob/main/README.zh-CN.md#readme)
 
 [![CI](https://github.com/MoonTseng/RunEngram/actions/workflows/ci.yml/badge.svg)](https://github.com/MoonTseng/RunEngram/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
@@ -163,6 +164,26 @@ Codex (default), Claude Code, or another CLI-capable agent can now follow
 to claim, resume, update, verify, and reuse engineering memory. The installer
 links the same public skill into both `~/.agents/skills/` and
 `~/.claude/skills/`.
+
+### Prompt shorthand
+
+Use the skill name as a prompt prefix. Brackets are optional.
+
+```text
+taskline-management <requirement>
+taskline-management run <requirement>
+taskline-management spec <requirement>
+taskline-management pending <requirement>
+```
+
+- default: create one runnable task, then stop;
+- `run`: create, claim, and execute that exact task;
+- `spec`: create, claim, attach a Spec, then stop before code changes;
+- `pending`: create the task in the non-runnable backlog.
+
+Chinese aliases `执行`, `方案`, and `待规划` work too. Add
+`project:CamScanner` when more than one RunEngram project exists. With one
+project, the skill selects it automatically.
 
 ```bash
 taskline task context <task-id>
