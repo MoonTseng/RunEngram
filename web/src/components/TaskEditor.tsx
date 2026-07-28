@@ -174,10 +174,20 @@ export function TaskEditor({
         }
         await resourceDrafts.replayCreateResources(activeTask);
       } else {
-        await update.mutateAsync({
-          id: currentTask.id,
-          patch: { title: trimmedTitle, description, type, state, priority, labels },
-        });
+        const taskFieldsChanged =
+          trimmedTitle !== currentTask.title ||
+          description !== currentTask.description ||
+          type !== currentTask.type ||
+          state !== currentTask.state ||
+          priority !== currentTask.priority ||
+          labels.length !== currentTask.labels.length ||
+          labels.some((label, index) => label !== currentTask.labels[index]);
+        if (taskFieldsChanged) {
+          await update.mutateAsync({
+            id: currentTask.id,
+            patch: { title: trimmedTitle, description, type, state, priority, labels },
+          });
+        }
       }
       onClose();
     } catch (err) {

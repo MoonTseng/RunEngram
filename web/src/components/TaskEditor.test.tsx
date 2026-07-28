@@ -925,6 +925,51 @@ describe("TaskEditor edit actions", () => {
       })
     );
   });
+
+  it("does not update a claimed task when only an attached link changed", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const claimedTask: Task = {
+      ...task,
+      owner: "yue_zeng",
+      claimed_at: 1780051741142,
+      lease_expires_at: 1780055341142,
+    };
+    const createdLink: TaskLink = {
+      id: "link-2",
+      task_id: task.id,
+      url: "https://example.com/requirements",
+      label: "Requirements",
+      created_at: 1780051741143,
+    };
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "/api/v1/tasks/task-1/links" && init?.method === "POST") {
+        return new Response(JSON.stringify(createdLink), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(
+        JSON.stringify({ error: "conflict: task is claimed by yue_zeng; pass owner or force" }),
+        {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderEditor(onClose, claimedTask);
+
+    await user.type(screen.getByPlaceholderText("https://…"), createdLink.url);
+    await user.type(screen.getByPlaceholderText("label (optional)"), createdLink.label);
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
+    expect(await screen.findByText(createdLink.label)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("TaskEditor image attachments", () => {
