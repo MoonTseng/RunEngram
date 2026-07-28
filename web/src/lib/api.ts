@@ -79,6 +79,7 @@ export interface Task {
   images?: TaskImage[];
   docs?: TaskDoc[];
   links?: TaskLink[];
+  learning_notes?: LearningNote[];
   created_at: number;
   updated_at: number;
 }
@@ -94,6 +95,29 @@ export interface TaskEvent {
 }
 
 export type CapsuleStatus = "active" | "stale" | "archived";
+
+export type LearningNoteKind = "human-correction" | "agent-recovery";
+export type LearningNoteStatus = "pending" | "promoted" | "rejected";
+
+export interface LearningNote {
+  id: string;
+  project_id: string;
+  source_task_id: string;
+  kind: LearningNoteKind;
+  trigger: string;
+  guidance: string;
+  scope: string;
+  labels: string[];
+  fingerprints: string[];
+  producer: string;
+  status: LearningNoteStatus;
+  evidence: string;
+  capsule_id: string;
+  rejection_reason: string;
+  created_at: number;
+  updated_at: number;
+  resolved_at: number;
+}
 
 export interface ExplorationCapsule {
   id: string;
@@ -117,12 +141,17 @@ export interface ExplorationCapsule {
 export interface LearningMetrics {
   capsule_count: number;
   active_capsule_count: number;
+  learning_note_count: number;
+  pending_note_count: number;
+  promoted_note_count: number;
+  rejected_note_count: number;
   snapshot_task_count: number;
   reused_task_count: number;
   helpful_count: number;
   rejected_count: number;
   stale_count: number;
   helpful_rate: number;
+  promotion_rate: number;
 }
 
 export interface TaskImage {
@@ -235,6 +264,23 @@ export async function getLearningMetrics(
     "GET",
     `/api/v1/projects/${encodeURIComponent(projectIdOrName)}/learning-metrics`
   );
+}
+
+export async function listLearningNotes(
+  projectIdOrName: string,
+  filters: { status?: LearningNoteStatus | ""; limit?: number } = {}
+): Promise<LearningNote[]> {
+  const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
+  if (filters.limit && filters.limit > 0) {
+    params.set("limit", String(filters.limit));
+  }
+  const suffix = params.size > 0 ? `?${params.toString()}` : "";
+  const response = await request<{ learning_notes: LearningNote[] }>(
+    "GET",
+    `/api/v1/projects/${encodeURIComponent(projectIdOrName)}/learning-notes${suffix}`
+  );
+  return response.learning_notes ?? [];
 }
 
 export async function searchTasks(
