@@ -9,7 +9,8 @@ description: |
   "mark this in review", or any project, kanban, backlog, or agent-workflow
   request. Explicit "taskline-management" prompt prefixes must trigger this
   skill. Support default create-only behavior plus run/spec/pending and
-  执行/方案/待规划 modes. When invoked without a payload, drain the current
+  执行/方案/待规划 modes. Track every claimed execution as a resumable Agent
+  run with normalized events and compact checkpoints. When invoked without a payload, drain the current
   project's runnable queue. Skip one-off notes with no state or follow-up.
 ---
 
@@ -149,7 +150,12 @@ itself fails.
 For `run` and `spec`, claim the ID returned by `taskline task create` with
 `taskline task claim <id>`; do not use `task next --claim`, because another
 higher-priority task may be selected. Immediately read
-`taskline task context <id>`. `run` stops after that created task completes or
+`taskline task context <id>`, then call
+`taskline run start <id> --agent-tool codex --format json` and retain
+`run.id`. If another supported Agent executes the task, use
+`--agent-tool claude-code`, `pi`, or `other`. A blocked active run resumes with
+the same ID and returns `"resumed": true`; read
+`taskline task resume <id> --format json` before continuing. `run` stops after that created task completes or
 hits a real blocker; it does not drain unrelated queued work. `spec` attaches
 the `Spec` task document and stops before any source-code modification.
 
@@ -292,6 +298,7 @@ taskline task search --project demo "historical context" --limit 10
 taskline task get <id>
 taskline task history <id>                  # actor, operation, time, before/after
 taskline task context <id>                  # immutable task-start context + recalled memory
+taskline task resume <id>                   # snapshot + latest checkpoint + recent events
 
 # Mutate (PATCH semantics — only pass the flags you want changed)
 taskline task update <id> --state test
@@ -341,6 +348,23 @@ taskline capsule use <capsule-id> --task <id> --outcome helpful \
   --notes "avoided repeated caller search"
 taskline capsule archive <capsule-id>
 taskline capsule metrics --project demo
+
+# Correct a pending learning candidate before it enters future context
+taskline learning edit <note-id> \
+  --trigger "Creating a feature branch for release 7.23.0" \
+  --guidance "Name branch 7.23.0_feat/<english-requirement-name>" \
+  --scope "CamScanner feature branches"
+
+# Resumable Agent run
+taskline run start <task-id> --agent-tool codex
+taskline run checkpoint <run-id> --status running \
+  --summary "Completed caller inventory" --next-step "Migrate bridge caller"
+taskline run checkpoint <run-id> --status blocked \
+  --summary "Bridge ownership unresolved" --next-step "Trace registration"
+taskline run event <run-id> --kind verification.passed \
+  --summary "Focused tests passed" --details '{"command":"go test ./..."}'
+taskline run finish <run-id> --status completed \
+  --summary "Implementation and verification complete"
 ```
 
 Delete returns `{"deleted": true, "id": ...}`; depend returns
@@ -423,14 +447,58 @@ adding too many over too few — they're cheap to remove later.
 
 During a claimed task, capture a Learning Note without asking the user when:
 
+- the user states a durable project convention that future work should follow,
+  such as branch naming, required document-ingestion tools, module boundaries,
+  or the project's verified build/test command;
 - a human correction fixes a failed tool, command, workflow, or architecture
   route and can help a future task; or
 - the agent recovers from a failed approach and verifies a reusable route.
 
-Run `taskline learning capture <task-id>` immediately. Preserve only minimal
+Capture policy:
+
+| Signal | Save as learning candidate? | Where it lives |
+| --- | --- | --- |
+| Explicit reusable project convention | Yes, `human-correction` | Pending Learning Note |
+| Human correction that changes execution route | Yes, `human-correction` | Pending Learning Note |
+| Failed route replaced by verified reusable route | Yes, `agent-recovery` | Pending Learning Note |
+| Routine file read or successful command | No | Run history/checkpoint only |
+| Temporary path, one-off task wording, transient environment value | No | Run history/checkpoint only |
+| Existing recalled guidance used again | No duplicate | Capsule usage outcome |
+| Secret, credential, raw transcript, hidden reasoning, guess | Never | Nowhere |
+
+Treat an explicit convention as `human-correction` even when it is supplied
+before a failure. The kind means human-authored reusable guidance, not only an
+after-the-fact correction.
+
+For a tracked run, append a normalized event immediately:
+
+```bash
+taskline run event <run-id> --kind learning.discovered \
+  --summary "Recovered Notion requirement ingestion" \
+  --trigger "Direct Notion requirement read failed" \
+  --guidance "Use one-flow/notion-to-prd before requirement analysis" \
+  --scope "Notion requirement analysis"
+```
+
+RunEngram creates a pending Learning Note from this event and links its ID to
+the run history. Use `taskline learning capture <task-id>` only for manual
+capture outside a tracked run. Preserve only minimal
 trigger, reusable guidance, scope, labels, fingerprints, and producer. Never
 capture secrets, credentials, raw transcripts, guesses, task-only preferences,
 or recalled guidance that already existed.
+
+Example: the user requires all release `7.23.0` feature branches to use
+`7.23.0_feat/<english-requirement-name>`. Capture it when the instruction
+appears:
+
+```bash
+taskline run event <run-id> --kind learning.discovered \
+  --summary "Captured feature branch convention" \
+  --trigger "Creating a feature branch for release 7.23.0" \
+  --guidance "Name branch 7.23.0_feat/<english-requirement-name>" \
+  --scope "CamScanner feature branches" \
+  --details '{"kind":"human-correction"}'
+```
 
 Example: a user supplies a Notion requirement link. Direct reading fails, then
 the user explains that `one-flow/notion-to-prd` must normalize it first:
@@ -450,6 +518,19 @@ During test or wrap-up, list pending notes for the task:
 ```bash
 taskline learning list --task <task-id> --status pending
 ```
+
+If wording, scope, or trigger is inaccurate, correct the pending candidate
+before promotion:
+
+```bash
+taskline learning edit <note-id> \
+  --trigger "<correct trigger>" \
+  --guidance "<correct reusable guidance>" \
+  --scope "<correct applicability>"
+```
+
+Only pending notes are editable. Never silently rewrite promoted memory.
+Archive the promoted capsule and capture a corrected candidate instead.
 
 Promote only after commands, tests, artifacts, or merged changes verify the
 guidance:
@@ -494,7 +575,12 @@ more instructions:
    one immutable task-start snapshot and returns up to five relevant,
    verified exploration capsules from the same project. Read their `scope`
    and `evidence` before using them. Do not substitute recalled knowledge for
-   current code verification.
+   current code verification. Then run
+   `taskline run start <id> --agent-tool <codex|claude-code|pi|other> --format json`
+   and retain the returned `run.id`. When `"resumed": true`, immediately read
+   `taskline task resume <id> --format json`; use its `latest_run.summary`,
+   `latest_run.next_step`, and `recent_events` instead of asking the user to
+   repeat prior work.
 4. Walk the task through the stages below in order. Each stage has the
    same shape: **Trigger** (what just happened) → **Actions** (do
    these now) → **Advance** (literal CLI command to move state) →
@@ -516,6 +602,8 @@ installed.
      keep it under ~30 chars).
   3. Confirm `git status` is clean.
 - **Advance:** `taskline task update <id> --state spec`
+- **Checkpoint:** save branch/setup result and next analysis action with
+  `taskline run checkpoint <run-id>`.
 - **Skip when:** the change qualifies as fast-path (see below) — go
   straight to dev.
 
@@ -534,6 +622,8 @@ installed.
      If you already wrote a Superpowers plan, upload that content as the
      doc rather than duplicating it in the task description.
 - **Advance:** `taskline task update <id> --state dev`
+- **Checkpoint:** save chosen contract, attached Spec, and first implementation
+  action with `taskline run checkpoint <run-id>`.
 - **Skip when:** the change is mechanical (rename, formatting,
   one-line config) — go straight to dev.
 
@@ -578,7 +668,8 @@ task description or implementation notes, then continue.
   5. Implement until the focused tests pass and the behavior is ready
      for full local verification.
   6. Capture each new reusable recovery or human correction immediately with
-     `taskline learning capture`. Do not wait until chat context is lost.
+     `taskline run event <run-id> --kind learning.discovered`. Do not wait
+     until chat context is lost.
   7. Create or update a `Dev Notes` task doc summarizing the
      implementation, issues encountered, and any divergence from the
      `Spec` doc with the reason.
@@ -587,6 +678,8 @@ task description or implementation notes, then continue.
      Use `stale` when current code disproves once-valid knowledge. Include a
      short note explaining evidence.
 - **Advance:** `taskline task update <id> --state test`
+- **Checkpoint:** save implementation result, changed boundary, known risk,
+  and first verification command with `taskline run checkpoint <run-id>`.
 - **Skip when:** never. Implementation must be ready for local
   verification before review begins.
 
@@ -609,19 +702,23 @@ task description or implementation notes, then continue.
      (capability: code review — `code-review:code-review`)
   5. Fix anything the review or tests surface; re-run the relevant
      tests after each fix.
-  6. Run `taskline learning list --task <id> --status pending`. Promote each
+  6. Append `taskline run event <run-id> --kind verification.passed` for each
+     meaningful verified surface. Include command, environment, or artifact in
+     `--details`.
+  7. Run `taskline learning list --task <id> --status pending`. Promote each
      verified candidate with its evidence file, reject disproved guidance with
      a concrete reason, and leave genuinely unverified candidates pending.
-  7. Create or update a `Test Report` task doc with reviewed test
+  8. Create or update a `Test Report` task doc with reviewed test
      cases, commands/checks run, pass rate, failures, and whether any
      failures require dropping back to `dev`.
-  8. For code in a Git worktree, stage and commit with a conventional,
+  9. For code in a Git worktree, stage and commit with a conventional,
      minimal message.
-  9. When the project uses remote branches or PRs, push, open the PR, and
+  10. When the project uses remote branches or PRs, push, open the PR, and
      attach its URL:
      `taskline task link <task-id> --url <pr-url> --label "PR #N"`.
      Skip this for local-only, research, docs, and teams without PR workflow.
 - **Advance:** `taskline task update <id> --state review`
+- **Checkpoint:** save verification result and remaining review action.
 - **Skip when:** never. Verification evidence is required in the task record;
   a pushed PR is optional unless the project itself requires one.
 
@@ -640,9 +737,22 @@ task description or implementation notes, then continue.
 - **Advance:** `taskline task update <id> --state done` after acceptance
   criteria pass and available evidence is recorded. The server allows this
   manual transition.
+- **Finish run:** immediately before or after the state change, call
+  `taskline run finish <run-id> --status completed --summary "<outcome and verification>"`.
 - **Drop back to dev** with `taskline task update <id> --state dev`
   when review or CI surfaces a real defect. The bidirectional state
   machine exists for exactly this — don't delete-and-recreate.
+
+### Interruption and blocker handling
+
+- Before context compaction, handoff, stopping work, or any risky long-running
+  action, save a compact checkpoint: completed work, decisions, unresolved
+  issue, and smallest concrete next step.
+- For a real blocker, use `--status blocked`; do not finish the run. On the
+  next invocation, `taskline run start` resumes the same run and
+  `taskline task resume` restores its checkpoint.
+- Use `run finish --status failed` only when execution ended and should not be
+  resumed. A recoverable blocker is not failure.
 
 ### done — wrap-up
 

@@ -15,7 +15,7 @@ import (
 
 func init() {
 	rootCmd.AddCommand(projectCmd)
-	projectCmd.AddCommand(projectCreateCmd, projectListCmd)
+	projectCmd.AddCommand(projectCreateCmd, projectListCmd, projectDeleteCmd)
 
 	projectCreateCmd.Flags().String("name", "", "project name (required, must be unique)")
 	projectCreateCmd.Flags().String("description", "", "human-readable project description")
@@ -55,6 +55,21 @@ var projectListCmd = &cobra.Command{
 		}
 		return output.Render(os.Stdout, output.Resolve(formatFlag), map[string]any{"projects": ps}, func(w io.Writer) {
 			renderProjectTable(w, ps)
+		})
+	},
+}
+
+var projectDeleteCmd = &cobra.Command{
+	Use:   "delete <project-id-or-name>",
+	Short: "Delete a project and all local RunEngram data it owns",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := newClient().DeleteProject(args[0]); err != nil {
+			return err
+		}
+		result := map[string]any{"deleted": true, "project": args[0]}
+		return output.Render(os.Stdout, output.Resolve(formatFlag), result, func(w io.Writer) {
+			fmt.Fprintf(w, "deleted project %s\n", args[0])
 		})
 	},
 }

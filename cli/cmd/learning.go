@@ -16,7 +16,13 @@ import (
 
 func init() {
 	rootCmd.AddCommand(learningCmd)
-	learningCmd.AddCommand(learningCaptureCmd, learningListCmd, learningPromoteCmd, learningRejectCmd)
+	learningCmd.AddCommand(
+		learningCaptureCmd,
+		learningListCmd,
+		learningEditCmd,
+		learningPromoteCmd,
+		learningRejectCmd,
+	)
 
 	learningCaptureCmd.Flags().StringP("project", "p", "", "project id or name (or $TASKLINE_PROJECT)")
 	learningCaptureCmd.Flags().String("kind", "human-correction", "human-correction|agent-recovery")
@@ -33,6 +39,12 @@ func init() {
 	learningListCmd.Flags().String("task", "", "source task id")
 	learningListCmd.Flags().String("status", "pending", "pending|promoted|rejected|all")
 	learningListCmd.Flags().Int("limit", 0, "maximum notes to return")
+
+	learningEditCmd.Flags().String("trigger", "", "corrected trigger condition (required)")
+	learningEditCmd.Flags().String("guidance", "", "corrected reusable guidance (required)")
+	learningEditCmd.Flags().String("scope", "", "corrected applicability scope")
+	_ = learningEditCmd.MarkFlagRequired("trigger")
+	_ = learningEditCmd.MarkFlagRequired("guidance")
 
 	learningPromoteCmd.Flags().String("evidence-file", "", "markdown verification evidence (required)")
 	_ = learningPromoteCmd.MarkFlagRequired("evidence-file")
@@ -116,6 +128,27 @@ var learningPromoteCmd = &cobra.Command{
 			return fmt.Errorf("read evidence file: %w", err)
 		}
 		note, err := newClient().PromoteLearningNote(args[0], string(evidence))
+		if err != nil {
+			return err
+		}
+		return renderLearningNote(note)
+	},
+}
+
+var learningEditCmd = &cobra.Command{
+	Use:   "edit <note-id>",
+	Short: "Correct a pending learning candidate before promotion",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if _, err := requireIdentity(); err != nil {
+			return err
+		}
+		trigger, _ := cmd.Flags().GetString("trigger")
+		guidance, _ := cmd.Flags().GetString("guidance")
+		scope, _ := cmd.Flags().GetString("scope")
+		note, err := newClient().UpdateLearningNote(args[0], client.UpdateLearningNoteInput{
+			Trigger: trigger, Guidance: guidance, Scope: scope,
+		})
 		if err != nil {
 			return err
 		}

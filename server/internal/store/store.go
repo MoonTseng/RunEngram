@@ -63,6 +63,9 @@ var schemaLearningAssets string
 //go:embed schema/0015_learning_notes.sql
 var schemaLearningNotes string
 
+//go:embed schema/0016_agent_runs.sql
+var schemaAgentRuns string
+
 // schemaMigrations defines the canonical migration set, keyed by
 // monotonically increasing version. We track the last-applied version in
 // SQLite's built-in `PRAGMA user_version` and only run migrations whose
@@ -90,6 +93,7 @@ var schemaMigrations = []migration{
 	{version: 13, sql: schemaTaskEvents},
 	{version: 14, sql: schemaLearningAssets},
 	{version: 15, sql: schemaLearningNotes},
+	{version: 16, sql: schemaAgentRuns},
 }
 
 // ErrNotFound is returned when a lookup misses.
@@ -358,6 +362,34 @@ func (s *Store) ListProjects(ctx context.Context) ([]*model.Project, error) {
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) DeleteProject(ctx context.Context, id string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM task_events
+		 WHERE task_id IN (SELECT id FROM tasks WHERE project_id = ?)`,
+		id,
+	); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrNotFound
+	}
+	return tx.Commit()
 }
 
 // ─── Agents ─────────────────────────────────────────────────────────────
@@ -1992,6 +2024,35 @@ func (s *Store) RejectLearningNote(
 		return nil, err
 	}
 	return note, nil
+}
+
+func (s *Store) UpdateLearningNote(
+	ctx context.Context,
+	id string,
+	trigger string,
+	guidance string,
+	scope string,
+) (*model.LearningNote, error) {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE learning_notes
+		   SET trigger=?, guidance=?, scope=?, updated_at=?
+		 WHERE id=? AND status=?`,
+		trigger, guidance, scope, now(), id, model.LearningNotePending,
+	)
+	if err != nil {
+		return nil, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if affected == 0 {
+		if _, getErr := s.GetLearningNote(ctx, id); getErr != nil {
+			return nil, getErr
+		}
+		return nil, fmt.Errorf("%w: only pending learning notes can be edited", ErrConflict)
+	}
+	return s.GetLearningNote(ctx, id)
 }
 
 func (s *Store) attachLearningNotes(ctx context.Context, task *model.Task) error {

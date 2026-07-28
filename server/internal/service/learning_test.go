@@ -76,6 +76,50 @@ func TestLearningNoteRequiresClaimAndPromotesOnce(t *testing.T) {
 	require.Equal(t, "learning_note_captured", events[1].Action)
 }
 
+func TestPendingLearningNoteCanBeCorrectedBeforePromotion(t *testing.T) {
+	ctx := service.WithActor(context.Background(), "codex")
+	svc := newSvc(t)
+	project, err := svc.CreateProject(ctx, "editable-learning", "")
+	require.NoError(t, err)
+	task, err := svc.CreateTask(
+		ctx, project.ID, "Follow project conventions", "", model.TaskTypeFeature, 1, true, nil,
+	)
+	require.NoError(t, err)
+	_, err = svc.ClaimTask(ctx, task.ID, service.ClaimOptions{Owner: "codex"})
+	require.NoError(t, err)
+	note, err := svc.CaptureLearningNote(ctx, service.CaptureLearningNoteInput{
+		ProjectID: project.ID, SourceTaskID: task.ID, AgentName: "codex",
+		Kind: model.LearningNoteHumanCorrection, Trigger: "Create feature branch",
+		Guidance: "Use version prefix", Scope: "All feature branches", Producer: "codex",
+	})
+	require.NoError(t, err)
+
+	updated, err := svc.UpdateLearningNote(ctx, note.ID, "codex", service.UpdateLearningNoteInput{
+		Trigger:  "Creating a feature branch for release 7.23.0",
+		Guidance: "Name branch 7.23.0_feat/<english-requirement-name>",
+		Scope:    "CamScanner feature branches",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Name branch 7.23.0_feat/<english-requirement-name>", updated.Guidance)
+	require.Equal(t, "CamScanner feature branches", updated.Scope)
+
+	_, err = svc.UpdateLearningNote(ctx, note.ID, "other-agent", service.UpdateLearningNoteInput{
+		Trigger: "wrong", Guidance: "wrong",
+	})
+	require.ErrorIs(t, err, store.ErrConflict)
+	_, err = svc.PromoteLearningNote(ctx, note.ID, "codex", "Branch created and verified")
+	require.NoError(t, err)
+	_, err = svc.UpdateLearningNote(ctx, note.ID, "codex", service.UpdateLearningNoteInput{
+		Trigger: "late edit", Guidance: "late edit",
+	})
+	require.ErrorIs(t, err, store.ErrConflict)
+
+	events, err := svc.ListTaskEvents(ctx, task.ID)
+	require.NoError(t, err)
+	require.Equal(t, "learning_note_promoted", events[0].Action)
+	require.Equal(t, "learning_note_updated", events[1].Action)
+}
+
 func TestLearningNoteRejectionAndExpiredClaimGuards(t *testing.T) {
 	ctx := context.Background()
 	svc := newSvc(t)

@@ -59,11 +59,30 @@ export function useTaskContext(taskId: string | null) {
   });
 }
 
+export function useTaskResumeContext(taskId: string | null) {
+  return useQuery({
+    queryKey: ["tasks", taskId, "resume"],
+    queryFn: () => api.getTaskResumeContext(taskId!),
+    enabled: !!taskId,
+    retry: false,
+  });
+}
+
 export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ name, description }: { name: string; description: string }) =>
       api.createProject(name, description),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+export function useDeleteProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (projectIdOrName: string) => api.deleteProject(projectIdOrName),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["projects"] });
     },

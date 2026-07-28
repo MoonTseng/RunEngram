@@ -1,18 +1,21 @@
 import { useState } from "react";
+import { Trash2 } from "lucide-react";
 import type { Project } from "../lib/api";
-import { useCreateProject, useProjects } from "../hooks/queries";
+import { useCreateProject, useDeleteProject, useProjects } from "../hooks/queries";
 import { useI18n } from "../lib/i18n";
 
 interface Props {
   selectedId: string | null;
   onSelect: (project: Project) => void;
+  onDelete: (project: Project) => void;
   className?: string;
 }
 
-export function Sidebar({ selectedId, onSelect, className }: Props) {
+export function Sidebar({ selectedId, onSelect, onDelete, className }: Props) {
   const { t } = useI18n();
   const projects = useProjects();
   const createProject = useCreateProject();
+  const deleteProject = useDeleteProject();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -90,17 +93,31 @@ export function Sidebar({ selectedId, onSelect, className }: Props) {
           {projects.data?.map((p) => {
             const active = p.id === selectedId;
             return (
-              <li key={p.id}>
+              <li key={p.id} className="group flex items-center gap-1">
                 <button
                   onClick={() => onSelect(p)}
                   className={
-                    "w-full text-left text-sm px-2 py-1.5 rounded-md transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tl-focus)] " +
+                    "min-w-0 flex-1 truncate text-left text-sm px-2 py-1.5 rounded-md transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tl-focus)] " +
                     (active
                       ? "bg-[var(--tl-primary)] text-[var(--tl-surface)] shadow-[var(--tl-shadow-paper)]"
                       : "text-[var(--tl-ink-muted)] hover:bg-[var(--tl-bg-quiet)] hover:text-[var(--tl-ink)]")
                   }
                 >
                   {p.name}
+                </button>
+                <button
+                  type="button"
+                  aria-label={`${t("sidebar.deleteProject")} ${p.name}`}
+                  title={`${t("sidebar.deleteProject")} ${p.name}`}
+                  disabled={deleteProject.isPending}
+                  onClick={async () => {
+                    if (!window.confirm(`${t("sidebar.deleteConfirm")}\n\n${p.name}`)) return;
+                    await deleteProject.mutateAsync(p.id);
+                    onDelete(p);
+                  }}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--tl-ink-faint)] opacity-0 transition hover:bg-[var(--tl-rust-soft)] hover:text-[var(--tl-rust)] focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tl-focus)] group-hover:opacity-100 group-focus-within:opacity-100 disabled:opacity-40"
+                >
+                  <Trash2 size={15} />
                 </button>
               </li>
             );

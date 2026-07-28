@@ -11,6 +11,8 @@ Run read-only checks first:
 runengram status
 taskline version
 taskline status
+taskline run --help
+taskline learning edit --help
 test -w "${RUNENGRAM_HOME:-$HOME/.local/share/runengram}/data"
 curl -fsS http://127.0.0.1:8787/healthz
 ```
@@ -22,6 +24,8 @@ Interpret failures:
 - health check fails while PID is alive: inspect `~/.local/state/runengram/server.log`, then `runengram restart`.
 - CLI reports unregistered: follow `taskline status`; register only when it reports `registered=false`.
 - invalid identity or token: repair existing local config. Never silently replace identity.
+- `run` or `learning edit` command missing: plugin/runtime versions differ;
+  reinstall latest release, fully restart Codex, and start a new task.
 - data directory not writable: report exact path and permissions. Do not use `sudo` or recursively chmod home.
 
 Finish with observed versions, service URL, data path, and exact remaining repair command.

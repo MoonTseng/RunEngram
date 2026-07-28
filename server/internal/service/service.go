@@ -169,6 +169,24 @@ func (s *Service) ListProjects(ctx context.Context) ([]*model.Project, error) {
 	return s.st.ListProjects(ctx)
 }
 
+func (s *Service) DeleteProject(
+	ctx context.Context,
+	idOrName string,
+) (*model.Project, []*model.Task, error) {
+	project, err := s.ResolveProject(ctx, idOrName)
+	if err != nil {
+		return nil, nil, err
+	}
+	tasks, err := s.st.ListTasks(ctx, store.TaskFilter{ProjectID: project.ID})
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.st.DeleteProject(ctx, project.ID); err != nil {
+		return nil, nil, err
+	}
+	return project, tasks, nil
+}
+
 // ResolveProject takes either a project UUID or a project name and returns the project.
 func (s *Service) ResolveProject(ctx context.Context, idOrName string) (*model.Project, error) {
 	if idOrName == "" {

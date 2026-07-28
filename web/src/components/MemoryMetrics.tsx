@@ -1,4 +1,13 @@
-import { BookOpenCheck, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  BookOpenCheck,
+  Bot,
+  CheckCircle2,
+  RefreshCw,
+  RotateCcw,
+  ShieldCheck,
+  Sparkles,
+  Unplug,
+} from "lucide-react";
 import type { LearningMetrics } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 
@@ -9,6 +18,18 @@ export function MemoryMetrics({ metrics }: { metrics?: LearningMetrics }) {
     { label: t("knowledge.reusedTasks"), value: metrics?.reused_task_count ?? 0, icon: Sparkles },
     { label: t("knowledge.pendingReview"), value: metrics?.pending_note_count ?? 0, icon: BookOpenCheck },
     { label: t("knowledge.needsRevalidation"), value: metrics?.stale_count ?? 0, icon: RefreshCw },
+    { label: t("knowledge.agentRuns"), value: metrics?.run_count ?? 0, icon: Bot },
+    {
+      label: t("knowledge.runCompletionRate"),
+      value: `${Math.round((metrics?.run_completion_rate ?? 0) * 100)}%`,
+      icon: CheckCircle2,
+    },
+    { label: t("knowledge.resumedRuns"), value: metrics?.resumed_run_count ?? 0, icon: RotateCcw },
+    {
+      label: t("knowledge.recoveryRate"),
+      value: `${Math.round((metrics?.recovery_rate ?? 0) * 100)}%`,
+      icon: Unplug,
+    },
   ];
   return (
     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

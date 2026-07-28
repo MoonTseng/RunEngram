@@ -9,7 +9,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useTaskContext } from "../hooks/queries";
+import { useTaskResumeContext } from "../hooks/queries";
 import type { LearningMetrics, Project, Task } from "../lib/api";
 import { getLearningMetrics } from "../lib/api";
 import { selectActionFocus, taskPrompt } from "../lib/actionConsole";
@@ -32,8 +32,10 @@ export function ActionConsole({
   const { stateLabel, t, typeLabel } = useI18n();
   const [copied, setCopied] = useState(false);
   const focus = useMemo(() => selectActionFocus(tasks), [tasks]);
-  const context = useTaskContext(focus.kind === "active" ? focus.task.id : null);
-  const recalled = context.data?.suggested_capsules ?? [];
+  const resume = useTaskResumeContext(focus.kind === "active" ? focus.task.id : null);
+  const context = resume.data?.snapshot;
+  const latestRun = resume.data?.latest_run;
+  const recalled = context?.suggested_capsules ?? [];
   const metrics = useQuery<LearningMetrics>({
     queryKey: ["learning-metrics", project.id],
     queryFn: () => getLearningMetrics(project.id),
@@ -60,6 +62,7 @@ export function ActionConsole({
   }
 
   const task = focus.task;
+  const captured = (task.learning_notes ?? []).filter((note) => note.status === "pending");
   const prompt = taskPrompt(project.name, focus);
   const status =
     focus.kind === "active"
@@ -132,13 +135,31 @@ export function ActionConsole({
               </p>
               <p className="mt-2 text-[15px] leading-7">
                 {focus.kind === "active"
-                  ? t("action.continueHint")
+                  ? latestRun?.next_step || t("action.continueHint")
                   : focus.kind === "outcome"
                     ? t("action.reviewHint")
                     : focus.kind === "blocked"
                       ? t("action.blockedHint")
                       : t("action.startHint")}
               </p>
+              {focus.kind === "active" && latestRun && (
+                <div className="mt-3 rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-surface)] p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <strong className="text-sm">{t("action.latestCheckpoint")}</strong>
+                    <span className="status-chip">
+                      {latestRun.agent_tool} · {latestRun.status}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-[var(--tl-ink-muted)]">
+                    {latestRun.summary || t("action.continueHint")}
+                  </p>
+                  {latestRun.next_step && (
+                    <p className="mt-2 text-sm">
+                      <strong>{t("action.nextStep")}:</strong> {latestRun.next_step}
+                    </p>
+                  )}
+                </div>
+              )}
               <code className="mt-3 block overflow-x-auto rounded-lg bg-[var(--tl-surface)] p-3 text-sm leading-6 text-[var(--tl-ink-muted)]">
                 {prompt}
               </code>
@@ -164,9 +185,9 @@ export function ActionConsole({
 
             {focus.kind !== "active" ? (
               <MemoryEmpty text={t("action.contextAfterClaim")} />
-            ) : context.isLoading ? (
+            ) : resume.isLoading ? (
               <MemoryEmpty text={t("action.contextLoading")} />
-            ) : context.isError ? (
+            ) : resume.isError ? (
               <MemoryEmpty text={t("action.contextUnavailable")} />
             ) : recalled.length === 0 ? (
               <MemoryEmpty text={t("action.noRecall")} />
@@ -198,6 +219,37 @@ export function ActionConsole({
             <button type="button" className="mt-4 text-sm font-semibold text-[var(--tl-primary)] hover:underline" onClick={() => onNavigate("knowledge")}>
               {t("action.openMemory")} →
             </button>
+
+            <div className="mt-5 border-t border-[var(--tl-outline)] pt-5">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-bold">{t("action.learningReceipt")}</h3>
+                <span className="status-chip">{captured.length}</span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-[var(--tl-ink-muted)]">
+                {t("action.learningReceiptHint")}
+              </p>
+              {captured.length === 0 ? (
+                <MemoryEmpty text={t("action.noLearningCaptured")} />
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {captured.slice(0, 3).map((note) => (
+                    <article
+                      key={note.id}
+                      className="rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-bg-quiet)] p-3"
+                    >
+                      <p className="text-sm font-bold leading-6">{note.guidance}</p>
+                      <p className="mt-1 text-xs leading-5 text-[var(--tl-ink-muted)]">
+                        {note.trigger}
+                        {note.scope ? ` · ${note.scope}` : ""}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              )}
+              <p className="mt-3 text-xs leading-5 text-[var(--tl-ink-faint)]">
+                {t("action.notCapturedPolicy")}
+              </p>
+            </div>
           </section>
         </div>
 

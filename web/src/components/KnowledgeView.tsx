@@ -5,9 +5,11 @@ import {
   getLearningMetrics,
   listCapsules,
   listLearningNotes,
+  updateLearningNote,
   type CapsuleStatus,
   type ExplorationCapsule,
   type Project,
+  type UpdateLearningNoteInput,
 } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 import { MemoryCandidates } from "./MemoryCandidates";
@@ -106,7 +108,13 @@ export function KnowledgeView({ project }: { project: Project }) {
             ) : notes.isError ? (
               <Loading text={String(notes.error)} error />
             ) : (
-              <MemoryCandidates notes={notes.data ?? []} />
+              <MemoryCandidates
+                notes={notes.data ?? []}
+                onUpdate={async (noteID: string, input: UpdateLearningNoteInput) => {
+                  await updateLearningNote(noteID, input);
+                  await notes.refetch();
+                }}
+              />
             )}
           </section>
         ) : (

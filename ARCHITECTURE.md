@@ -94,6 +94,12 @@ learning_notes
              producer, status ∈ {pending,promoted,rejected},
              evidence, capsule_id, rejection_reason,
              created_at, updated_at, resolved_at)
+agent_runs  (id, task_id → tasks.id, project_id → projects.id,
+             agent_name,
+             agent_tool ∈ {codex,claude-code,pi,other},
+             status ∈ {running,blocked,completed,failed},
+             summary, next_step,
+             started_at, updated_at, completed_at)
 ```
 
 Attachment and dependency FKs use `ON DELETE CASCADE`. Cascade is what makes
@@ -115,12 +121,50 @@ Indexes:
 - `idx_learning_notes_project_status(project_id, status, updated_at DESC)` —
   candidate review and metrics
 - `idx_learning_notes_task(source_task_id, created_at DESC)` — task provenance
+- `idx_agent_runs_active_task(task_id) WHERE status IN ('running','blocked')`
+  — at most one resumable run per task
+- `idx_agent_runs_task_updated(task_id, updated_at DESC)` — resume lookup
+- `idx_agent_runs_project_status(project_id, status)` — run metrics
 
 Schema lives twice: once at `server/migrations/0001_init.sql` (for tools
 that read the migration history) and once at
 `server/internal/store/schema/0001_init.sql` (`go:embed`-ed into the
 binary so a fresh database can be created without shipping the migrations
 directory). Keep them identical.
+
+## Agent run loop
+
+Task workflow and Agent runtime are separate state machines:
+
+```text
+task: pending ⇄ start ⇄ spec ⇄ dev ⇄ test ⇄ review ⇄ done
+run:             running ⇄ blocked ───────────────▶ completed | failed
+```
+
+Claim ownership gates both. Starting a run for a claimed task creates one
+`agent_runs` row; repeating `run start` for the same owner resumes the active
+row and appends `run.resumed`. A partial unique index prevents concurrent
+active runs for one task.
+
+Checkpoints store only a compact summary and next concrete action. Normalized
+events live in append-only `task_events` and carry `run_id`:
+
+- `run.started`, `run.resumed`;
+- `tool.called`;
+- `checkpoint.saved`, `run.blocked`;
+- `verification.passed`;
+- `learning.discovered`;
+- `run.completed`, `run.failed`.
+
+`GET /tasks/:id/resume` returns immutable task-start context, latest run, and
+recent events. CLI, Web UI, Codex, Claude Code, Pi, and future adapters consume
+the same protocol; none owns server-side loop semantics.
+
+`learning.discovered` is the bridge from execution into learning. It creates a
+pending Learning Note and links its ID back to the run event. Pending notes can
+be edited by the live task owner. Promoted or rejected notes are immutable;
+correcting promoted knowledge requires archiving its capsule and capturing a
+new candidate.
 
 ## Task operation history
 
@@ -231,7 +275,8 @@ human correction / successful recovery
 ```
 
 Only the live owner of the source task may capture, promote, or reject its
-learning notes. Capture accepts structured `trigger`, `guidance`, `scope`,
+learning notes. The same owner may edit a pending candidate before review.
+Capture accepts structured `trigger`, `guidance`, `scope`,
 labels, fingerprints, and producer fields; raw conversations, secrets, and
 hidden reasoning are outside the contract.
 
@@ -247,6 +292,20 @@ Capsules only. The public skill drives capture at high-signal execution
 moments and resolves candidates after test evidence exists; the server
 enforces ownership, status, evidence, and atomicity independently of any agent
 tool.
+
+Automatic capture is deliberately narrow. Explicit reusable project
+conventions, human corrections that change execution, and verified recovery
+paths become candidates. Routine reads, successful commands, temporary paths,
+task-only wording, secrets, raw transcripts, hidden reasoning, and guesses do
+not become project memory.
+
+## Project deletion
+
+`DELETE /api/v1/projects/:project` resolves ID or name, snapshots task
+attachment paths, removes task history owned by the project, then deletes the
+project. Foreign-key cascades remove tasks, dependencies, metadata,
+snapshots, runs, learning notes, and capsules. The handler deletes Markdown
+and image files on a best-effort basis after the database transaction.
 
 ## Web UI delivery
 

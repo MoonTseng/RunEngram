@@ -37,14 +37,24 @@ func (s *Service) recordTaskEvent(
 	details map[string]any,
 	createdAt int64,
 ) error {
+	_, err := s.appendTaskEvent(ctx, taskID, action, summary, details, createdAt)
+	return err
+}
+
+func (s *Service) appendTaskEvent(
+	ctx context.Context,
+	taskID, action, summary string,
+	details map[string]any,
+	createdAt int64,
+) (*model.TaskEvent, error) {
 	event := &model.TaskEvent{
 		TaskID: taskID, Actor: actorFromContext(ctx), Action: action,
 		Summary: summary, Details: details, CreatedAt: createdAt,
 	}
 	if err := s.st.AddTaskEvent(ctx, event); err != nil {
-		return fmt.Errorf("record task history: %w", err)
+		return nil, fmt.Errorf("record task history: %w", err)
 	}
-	return nil
+	return event, nil
 }
 
 func taskSnapshot(task *model.Task) map[string]any {

@@ -50,6 +50,7 @@ func (h *Handler) Register(s *server.Hertz) {
 
 	v1.POST("/projects", h.createProject)
 	v1.GET("/projects", h.listProjects)
+	v1.DELETE("/projects/:project", h.deleteProject)
 
 	v1.POST("/projects/:project/tasks", h.createTask)
 	v1.GET("/projects/:project/tasks", h.listTasks)
@@ -64,7 +65,10 @@ func (h *Handler) Register(s *server.Hertz) {
 
 	v1.GET("/tasks/:id", h.getTask)
 	v1.GET("/tasks/:id/context", h.taskContext)
+	v1.GET("/tasks/:id/resume", h.taskResumeContext)
 	v1.GET("/tasks/:id/events", h.listTaskEvents)
+	v1.GET("/tasks/:id/runs", h.listAgentRuns)
+	v1.POST("/tasks/:id/runs", h.startOrResumeRun)
 	v1.GET("/tasks/:id/learning-notes", h.listTaskLearningNotes)
 	v1.PATCH("/tasks/:id", h.updateTask)
 	v1.DELETE("/tasks/:id", h.deleteTask)
@@ -88,6 +92,11 @@ func (h *Handler) Register(s *server.Hertz) {
 	v1.POST("/capsules/:id/usages", h.recordCapsuleUsage)
 	v1.POST("/learning-notes/:id/promote", h.promoteLearningNote)
 	v1.POST("/learning-notes/:id/reject", h.rejectLearningNote)
+	v1.PATCH("/learning-notes/:id", h.updateLearningNote)
+	v1.GET("/runs/:id", h.getAgentRun)
+	v1.POST("/runs/:id/events", h.recordRunEvent)
+	v1.PATCH("/runs/:id/checkpoint", h.saveRunCheckpoint)
+	v1.POST("/runs/:id/finish", h.finishRun)
 
 	// Mount the bundled UI last so /api/* and /healthz keep their handlers.
 	if uiFS, ok := webfs.FS(); ok {
@@ -221,6 +230,35 @@ func (h *Handler) listProjects(ctx context.Context, c *app.RequestContext) {
 	writeJSON(c, http.StatusOK, map[string]any{"projects": ps})
 }
 
+func (h *Handler) deleteProject(ctx context.Context, c *app.RequestContext) {
+	var ok bool
+	if ctx, ok = h.withRequestActor(ctx, c); !ok {
+		return
+	}
+	project, tasks, err := h.svc.DeleteProject(ctx, c.Param("project"))
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	for _, task := range tasks {
+		for _, image := range task.Images {
+			if image.StoragePath != "" {
+				_ = h.attachments.DeleteFile(image.StoragePath)
+			}
+		}
+		for _, doc := range task.Docs {
+			if doc.StoragePath != "" {
+				_ = h.attachments.DeleteFile(doc.StoragePath)
+			}
+		}
+	}
+	writeJSON(c, http.StatusOK, map[string]any{
+		"deleted": true,
+		"id":      project.ID,
+		"name":    project.Name,
+	})
+}
+
 type createCapsuleReq struct {
 	SourceTaskID string   `json:"source_task_id"`
 	Title        string   `json:"title"`
@@ -259,6 +297,12 @@ type promoteLearningNoteReq struct {
 
 type rejectLearningNoteReq struct {
 	Reason string `json:"reason"`
+}
+
+type updateLearningNoteReq struct {
+	Trigger  string `json:"trigger"`
+	Guidance string `json:"guidance"`
+	Scope    string `json:"scope"`
 }
 
 func (h *Handler) captureLearningNote(ctx context.Context, c *app.RequestContext) {
@@ -352,6 +396,32 @@ func (h *Handler) rejectLearningNote(ctx context.Context, c *app.RequestContext)
 		return
 	}
 	note, err := h.svc.RejectLearningNote(ctx, c.Param("id"), agent.Name, req.Reason)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusOK, note)
+}
+
+func (h *Handler) updateLearningNote(ctx context.Context, c *app.RequestContext) {
+	agent, ok := h.requireAgent(ctx, c)
+	if !ok {
+		return
+	}
+	ctx = service.WithActor(ctx, agent.Name)
+	var req updateLearningNoteReq
+	if err := decodeJSON(c, &req); err != nil {
+		writeError(c, http.StatusBadRequest, err)
+		return
+	}
+	note, err := h.svc.UpdateLearningNote(
+		ctx,
+		c.Param("id"),
+		agent.Name,
+		service.UpdateLearningNoteInput{
+			Trigger: req.Trigger, Guidance: req.Guidance, Scope: req.Scope,
+		},
+	)
 	if err != nil {
 		writeServiceError(c, err)
 		return

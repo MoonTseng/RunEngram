@@ -13,8 +13,9 @@ RunEngram 把任务、Agent 收到的上下文、测试证据和可复用结论�
 本地服务里。默认配合 Codex 使用，也可以接 Claude Code 或其他能调用 CLI
 的工具。
 
-> **当前状态：早期 Alpha。** 我们正在本地试用。任务执行、上下文快照、
-> 经验候选、人工审核、召回和复用统计已经实现；自动生成项目规则还没有做。
+> **当前状态：早期 Alpha。** 我们正在本地试用。可恢复 Agent 执行、
+> 上下文快照、检查点、学习回执、经验编辑审核、召回和复用统计已经实现；
+> 自动把经验转成强制项目规则还没有做。
 
 ![RunEngram 行动台](./docs/assets/runengram-action-console-zh-CN.jpg)
 
@@ -22,18 +23,21 @@ RunEngram 把任务、Agent 收到的上下文、测试证据和可复用结论�
 
 ## 它具体做什么
 
-一次任务只走四步：
+一次任务走五步：
 
 1. 开发者写清任务和验收条件；
 2. Agent 领取任务，并拿到一份固定的上下文快照；
-3. 测试、Review 和交付证据跟着任务保存；
-4. 有复用价值的结论经过确认后，供后面的任务使用。
+3. 执行过程保存精简检查点；换会话或中断后直接从下一步恢复；
+4. 测试、Review 和交付证据跟着任务保存；
+5. 项目约定、人工纠正和已验证恢复路径先成为可编辑候选，审核后才给后面的任务使用。
 
 | 我们遇到的问题 | RunEngram 的处理方式 |
 | --- | --- |
 | 每次新会话都要重讲需求和架构 | 保存任务输入和本次召回内容，执行中不再漂移 |
+| 长任务中断或换 Codex 会话后要重新理解 | 恢复最近检查点、下一步和执行事件 |
 | 不同 Agent 重复搜索代码、重试失败命令 | 按项目范围和代码指纹保存排查结论 |
 | 有用纠正消失在聊天记录里 | 记录为待审核的经验候选 |
+| 不知道系统到底记住了什么 | 行动台展示学习回执，待验证候选支持人工修改 |
 | 猜测或过期建议混进知识库 | 没有验证证据的内容不能进入项目记忆 |
 | 不知道保存的经验有没有帮助 | 记录有效、无效和过期三种复用结果 |
 
@@ -51,11 +55,13 @@ RunEngram 把任务、Agent 收到的上下文、测试证据和可复用结论�
 ```mermaid
 flowchart LR
     A["任务 + 已召回上下文"] -->|"L1 · 执行"| B["Coding Agent 运行"]
+    B --> C0["检查点 + 下一步"]
+    C0 -->|"中断恢复"| B
     B -->|"L2 · 验证"| C["测试 · Review · 证据"]
     C --> D{"经验可复用？"}
     D -->|"人工纠正或 Agent 恢复"| E["待审核经验"]
     D -->|"否"| H["仅保留任务结果"]
-    E -->|"证据验证通过"| F["项目经验"]
+    E -->|"修改并验证"| F["项目经验"]
     E -->|"未验证或错误"| G["保持待验证或拒绝"]
     F -->|"L3 · 复用"| I["下一任务上下文"]
     I --> B
@@ -72,6 +78,7 @@ RunEngram 位于 Coding Agent 外部。原来的提示词、Skill、CI 和团队
 | --- | --- | --- | --- | --- | --- |
 | 核心作用 | 闭合任务 → 证据 → 记忆 | 保存 Copilot 仓库事实 | 持久化指令与自动记忆 | 在工作区执行 Agent | 度量软件交付 |
 | 任务状态与 Agent 租约 | 支持 | 不支持 | 不支持 | 执行会话 | 交付流程数据 |
+| 可恢复执行检查点 | 工具无关协议 | 不支持 | 会话记录 | 会话状态 | 不支持 |
 | 不可变任务上下文 | 支持 | 不支持 | 不支持 | 工作区/会话上下文 | 不支持 |
 | 基于证据的记忆晋升 | 支持 | 引用校验 | 人工文件/自动记忆 | 不支持 | 不支持 |
 | 记忆复用效果观测 | 有效/无效/过期 | 不支持 | 不支持 | 不支持 | 不支持 |
@@ -89,6 +96,8 @@ RunEngram 位于 Coding Agent 外部。原来的提示词、Skill、CI 和团队
 - 七个任务阶段：`pending → start → spec → dev → test → review → done`；
 - 依赖关系、优先级、标签、Markdown 文档、图片和链接；
 - 原子领取、租约、心跳和中断恢复；
+- Codex、Claude Code、Pi 或其他执行器共用一套 Agent Run：规范化事件、
+  精简检查点、恢复上下文和完成状态；
 - 只追加的任务历史，记录操作者、时间和具体改动；
 - 支持不使用 GitHub PR 或 CI 的团队手动评审和完成任务；有交付证据时仍可附加链接与验证文档；
 - 行动台、看板、依赖图和工程记忆页面；
@@ -96,21 +105,39 @@ RunEngram 位于 Coding Agent 外部。原来的提示词、Skill、CI 和团队
 - Agent 开始任务时生成固定的上下文快照；
 - 项目经验保存来源任务、适用范围、证据、代码指纹和执行工具；
 - 人工纠正和成功恢复可以记录为经验候选；
+- 用户明确给出的可复用项目约定也会生成候选；
+- 待验证经验可修改触发条件、建议做法和适用范围；已晋升经验不会被静默覆盖；
 - 候选经过人工确认和证据验证后才进入项目记忆；
-- 统计候选、晋升、召回任务数和实际复用结果。
+- 统计执行次数、完成率、阻塞恢复率、候选、晋升、召回任务数和实际复用结果。
 
 为了兼容现有脚本，二进制目前仍叫 `taskline-server` 和 `taskline`，1.0 前
 会统一命名。
 
 ## 项目经验怎么保存
 
-1. 任务开始时，保存任务输入和本次召回内容；
-2. 人工纠正或一次成功的失败恢复，可以生成经验候选；
-3. 候选必须附上具体证据，并由人确认后才能进入项目记忆；
-4. 后续任务记录这条经验是否有效、被拒绝或已经过期。
+1. 任务开始时保存任务输入和本次召回内容，并创建或恢复 Agent Run；
+2. 阶段变化、阻塞和中断时保存检查点；
+3. 可复用项目约定、人工纠正或成功恢复路径生成待验证经验；
+4. 开发者可以修改它的触发条件、建议做法和适用范围；
+5. 候选附上验证证据并由人确认后进入项目记忆；
+6. 后续任务记录这条经验是否有效、被拒绝或已经过期。
 
 RunEngram 不会复制完整聊天记录，也不保存密码、Token、隐藏推理或未经确认
 的猜测。后续任务只会召回审核过的经验。
+
+### 什么时候自动记录
+
+| 信息 | 处理方式 |
+| --- | --- |
+| 明确、可复用的项目约定，例如 `7.23.0_feat/<名称>` | 生成待验证经验 |
+| 人工纠正改变了执行路径 | 生成待验证经验 |
+| 失败路径被已验证的可复用路径替代 | 生成待验证经验 |
+| 常规文件读取、成功命令、临时路径、仅本任务适用的措辞 | 只进入执行事件或检查点 |
+| 已召回经验再次被使用 | 记录复用结果，不重复创建经验 |
+| 密码、Token、原始聊天、隐藏推理、未经验证的猜测 | 不进入工程记忆 |
+
+当前任务的行动台会显示“学习回执”；工程记忆页展示来源任务和待验证候选，
+并支持人工编辑。待验证经验不会影响其他任务。
 
 ## 作为 Codex 插件安装
 
@@ -196,6 +223,10 @@ export TASKLINE_PROJECT=demo
 ./dist/taskline task next --claim
 TASK_ID="<领取到的任务 ID>"
 ./dist/taskline task context "$TASK_ID"
+./dist/taskline run start "$TASK_ID" --agent-tool codex
+RUN_ID="<上一条输出中的 run id>"
+./dist/taskline run checkpoint "$RUN_ID" \
+  --summary "分析完成" --next-step "实现第一处迁移"
 ```
 
 `task next` 默认只预览。Agent 真正开始执行前必须使用 `--claim`。
@@ -257,6 +288,10 @@ taskline learning capture --project your-project --task <任务 ID> \
   --guidance "先调用 one-flow 的 notion-to-prd，再进入 PRD 分析" \
   --scope "Notion 链接需求" --producer codex
 taskline learning list --project your-project --status pending
+taskline learning edit <学习候选 ID> \
+  --trigger "为 7.23.0 创建功能分支" \
+  --guidance "使用 7.23.0_feat/<英文需求名>" \
+  --scope "功能分支"
 taskline learning promote <学习候选 ID> \
   --evidence-file ./verified-learning.md
 taskline learning reject <学习候选 ID> \
@@ -268,6 +303,8 @@ taskline capsule create --project your-project --source-task <任务 ID> \
   --fingerprint module-name --producer codex
 taskline capsule use <胶囊 ID> --task <任务 ID> --outcome helpful
 taskline capsule metrics --project your-project
+taskline task resume <任务 ID>
+taskline project delete temporary-smoke-project
 ```
 
 更完整的操作说明见[中文使用指南](./使用说明.md)。
@@ -280,6 +317,7 @@ flowchart LR
     Agent["Coding Agent / Skill"]
     API["RunEngram API"]
     Task["任务状态、依赖、领取与历史"]
+    Run["Agent Run、事件与检查点"]
     Evidence["验证证据"]
     Candidate["待验证 Learning Note"]
     Learning["已验证 Exploration Capsule"]
@@ -288,6 +326,8 @@ flowchart LR
     Human --> API
     Agent --> API
     API --> Task
+    Task --> Run
+    Run --> Agent
     Task --> Evidence
     Evidence --> Candidate
     Candidate -->|"验证并晋升"| Learning

@@ -33,8 +33,32 @@ describe("KnowledgeView", () => {
 
   it("shows pending corrections and promotion metrics", async () => {
     const user = userEvent.setup();
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes("/learning-notes/note-1") && init?.method === "PATCH") {
+        return new Response(
+          JSON.stringify({
+            id: "note-1",
+            project_id: project.id,
+            source_task_id: "task-1",
+            kind: "human-correction",
+            trigger: "Notion requirements need normalization",
+            guidance: "Use one-flow/notion-to-prd before PRD analysis",
+            scope: "Notion requirements",
+            labels: ["notion"],
+            fingerprints: ["notion-to-prd"],
+            producer: "codex",
+            status: "pending",
+            evidence: "",
+            capsule_id: "",
+            rejection_reason: "",
+            created_at: 1785220000000,
+            updated_at: 1785220001000,
+            resolved_at: 0,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
       if (url.includes("/learning-metrics")) {
         return new Response(
           JSON.stringify({
@@ -51,6 +75,13 @@ describe("KnowledgeView", () => {
             stale_count: 0,
             helpful_rate: 1,
             promotion_rate: 0.8,
+            run_count: 5,
+            completed_run_count: 4,
+            active_run_count: 1,
+            blocked_run_count: 2,
+            resumed_run_count: 2,
+            run_completion_rate: 0.8,
+            recovery_rate: 0.5,
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         );
@@ -97,5 +128,19 @@ describe("KnowledgeView", () => {
     expect(screen.getAllByText("Pending review")).toHaveLength(2);
     expect(screen.getAllByText("Verified")).toHaveLength(2);
     expect(screen.getByText(/Human correction/)).toBeTruthy();
+    expect(screen.getByText("Agent runs")).toBeTruthy();
+    expect(screen.getByText("5")).toBeTruthy();
+    expect(screen.getByText("Recovery rate")).toBeTruthy();
+    expect(screen.getByText("50%")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const guidance = screen.getByLabelText("Reusable guidance");
+    await user.clear(guidance);
+    await user.type(guidance, "Use one-flow/notion-to-prd before PRD analysis");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/learning-notes/note-1"),
+      expect.objectContaining({ method: "PATCH" })
+    );
   });
 });

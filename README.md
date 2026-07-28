@@ -17,9 +17,10 @@ RunEngram keeps the task, the context given to the agent, the test evidence,
 and any reusable lesson in one local store. Codex is the default client, but
 the protocol also works with Claude Code or any tool that can call the CLI.
 
-> **Early alpha.** We use it locally. Task execution, context snapshots,
-> learning candidates, review, recall, and reuse metrics are implemented.
-> Automatic conversion of experience into project rules is not.
+> **Early alpha.** We use it locally. Resumable Agent runs, context snapshots,
+> checkpoints, learning receipts, candidate review/editing, recall, and reuse
+> metrics work now. Automatic conversion of experience into enforced project
+> rules is not implemented.
 
 ![RunEngram Action Console](./docs/assets/runengram-action-console.jpg)
 
@@ -27,18 +28,23 @@ the protocol also works with Claude Code or any tool that can call the CLI.
 
 ## What it is for
 
-A task goes through four steps:
+A task goes through five steps:
 
 1. Write a task with enough context to execute.
 2. An agent claims it and receives a fixed context snapshot.
-3. Tests, review, and delivery evidence are attached to the task.
-4. A useful finding can be reviewed and reused by a later task.
+3. The run saves compact checkpoints, so another session can resume from the
+   next concrete action instead of reconstructing the chat.
+4. Tests, review, and delivery evidence are attached to the task.
+5. Reusable conventions, human corrections, and verified recovery paths become
+   editable candidates. Only reviewed candidates reach later tasks.
 
 | Problem we saw | What RunEngram does |
 | --- | --- |
 | Requirements and architecture get retyped in every session | Saves the task input and recalled notes in a fixed snapshot |
+| A long Agent run is interrupted or moved to another session | Restores its latest checkpoint, next step, and recent run events |
 | Agents search the same files and repeat failed commands | Stores findings with project scope and code fingerprints |
 | Corrections disappear in chat history | Records them as reviewable learning candidates |
+| Nobody knows what the system learned | Shows a learning receipt on the active task and editable pending candidates |
 | Old or guessed advice leaks into later work | Requires evidence before a candidate enters project memory |
 | A team cannot tell whether saved context helped | Records useful, rejected, and stale reuse outcomes |
 
@@ -56,11 +62,13 @@ A task goes through four steps:
 ```mermaid
 flowchart LR
     A["Task + recalled context"] -->|"L1 · Execute"| B["Coding agent run"]
+    B --> C0["Checkpoint + next step"]
+    C0 -->|"resume after interruption"| B
     B -->|"L2 · Verify"| C["Tests · review · evidence"]
     C --> D{"Reusable lesson?"}
     D -->|"Human correction or recovery"| E["Pending project note"]
     D -->|"No"| H["Task result only"]
-    E -->|"Verified"| F["Reviewed project note"]
+    E -->|"Edit + verify"| F["Reviewed project note"]
     E -->|"Unverified or wrong"| G["Keep pending or reject"]
     F -->|"L3 · Reuse"| I["Next task context"]
     I --> B
@@ -78,6 +86,7 @@ feature-by-feature scorecard.
 | --- | --- | --- | --- | --- | --- |
 | Main job | Close task → evidence → memory loop | Store repository facts for Copilot | Persist instructions and auto memory | Execute agents in workspaces | Measure software delivery |
 | Task state and agent leases | Yes | No | No | Execution sessions | Delivery workflow data |
+| Resumable run checkpoints | Yes, tool-neutral protocol | No | Session transcript | Session state | No |
 | Immutable task context | Yes | No | No | Workspace/session context | No |
 | Evidence-gated memory promotion | Yes | Citation validation | Manual files / auto memory | No | No |
 | Observed memory reuse | Helpful / rejected / stale | No | No | No | No |
@@ -95,6 +104,8 @@ Sources: [GitHub Copilot Memory](https://docs.github.com/en/copilot/concepts/age
 - Task states: `pending → start → spec → dev → test → review → done`.
 - Dependencies, priorities, labels, Markdown documents, images, and links.
 - Atomic claims, leases, heartbeats, and interrupted-task recovery.
+- First-class Agent runs for Codex, Claude Code, Pi, or another executor:
+  normalized events, compact checkpoints, resume context, and completion status.
 - Append-only task history with actor, time, and changed fields.
 - Manual review and completion for teams without GitHub PR or CI; links and
   verification documents can still be attached when available.
@@ -104,8 +115,12 @@ Sources: [GitHub Copilot Memory](https://docs.github.com/en/copilot/concepts/age
 - Project findings with source task, scope, evidence, code fingerprints, and
   producer (`codex`, `claude-code`, or another tool).
 - Learning candidates for human corrections and successful recovery paths.
+- Durable human-provided project conventions can also become candidates.
+- Pending candidates can be corrected before promotion; promoted memory is not
+  silently rewritten.
 - Manual promotion with evidence; rejected candidates stay out of recall.
-- Counts for candidates, promotions, recalled tasks, and actual reuse results.
+- Counts for runs, completion, blocked recovery, candidates, promotions,
+  recalled tasks, and actual reuse results.
 
 The binaries still use the names `taskline-server` and `taskline` for
 compatibility. They will be renamed before 1.0.
@@ -113,17 +128,32 @@ compatibility. They will be renamed before 1.0.
 ## How project notes are saved
 
 1. When work starts, RunEngram saves the task input and recalled notes as a
-   snapshot.
-2. A human correction or a successful recovery can create a learning
-   candidate.
-3. The candidate needs concrete evidence before someone promotes it into
-   project memory.
-4. Later tasks record whether the recalled note helped, was rejected, or had
-   become stale.
+   snapshot and opens or resumes an Agent run.
+2. The Agent saves checkpoints at stage changes, blockers, and interruption.
+3. A durable project convention, human correction, or successful recovery can
+   create a pending learning candidate.
+4. A developer can edit its trigger, guidance, and scope.
+5. The candidate needs concrete evidence before promotion into project memory.
+6. Later tasks record whether recalled memory helped, was rejected, or stale.
 
 RunEngram does not copy whole chat transcripts. It does not store secrets,
 tokens, hidden reasoning, or unreviewed guesses. Only reviewed entries are
 recalled by later tasks.
+
+### What is recorded automatically
+
+| Signal | Result |
+| --- | --- |
+| Explicit reusable convention, such as `7.23.0_feat/<name>` | Pending learning candidate |
+| Human correction that changes the execution route | Pending learning candidate |
+| Failed route replaced by a verified reusable route | Pending learning candidate |
+| Routine file read, successful command, temporary path, task-only wording | Run event or checkpoint only |
+| Existing recalled rule used again | Reuse outcome; no duplicate memory |
+| Secret, credential, raw transcript, hidden reasoning, guess | Never stored as memory |
+
+The active-task screen shows a **Learning receipt**. Project Knowledge shows
+pending candidates, their source task, and an edit action. Pending candidates
+never affect another run.
 
 ## Install as a Codex plugin
 
@@ -210,6 +240,10 @@ export TASKLINE_PROJECT=demo
 ./dist/taskline task next --claim
 TASK_ID="<claimed-task-id>"
 ./dist/taskline task context "$TASK_ID"
+./dist/taskline run start "$TASK_ID" --agent-tool codex
+RUN_ID="<run-id from previous output>"
+./dist/taskline run checkpoint "$RUN_ID" \
+  --summary "Analysis complete" --next-step "Implement first migration"
 ```
 
 `task next` previews work by default. An agent must use `--claim` before
@@ -274,6 +308,10 @@ taskline learning capture --project your-project --task <task-id> \
   --guidance "Use the one-flow notion-to-prd step before PRD analysis" \
   --scope "Requirements linked from Notion" --producer codex
 taskline learning list --project your-project --status pending
+taskline learning edit <learning-note-id> \
+  --trigger "Creating a feature branch for release 7.23.0" \
+  --guidance "Use 7.23.0_feat/<english-requirement-name>" \
+  --scope "Feature branches"
 taskline learning promote <learning-note-id> \
   --evidence-file ./verified-learning.md
 taskline learning reject <learning-note-id> \
@@ -285,6 +323,8 @@ taskline capsule create --project your-project --source-task <task-id> \
   --fingerprint module-name --producer codex
 taskline capsule use <capsule-id> --task <task-id> --outcome helpful
 taskline capsule metrics --project your-project
+taskline task resume <task-id>
+taskline project delete temporary-smoke-project
 ```
 
 ## Architecture
@@ -295,6 +335,7 @@ flowchart LR
     Agent["Coding Agent / Skill"]
     API["RunEngram API"]
     Task["Task state, dependencies, claims, history"]
+    Run["Agent run, events, checkpoints"]
     Evidence["Verification evidence"]
     Candidate["Pending learning notes"]
     Learning["Verified Exploration Capsules"]
@@ -303,6 +344,8 @@ flowchart LR
     Human --> API
     Agent --> API
     API --> Task
+    Task --> Run
+    Run --> Agent
     Task --> Evidence
     Evidence --> Candidate
     Candidate -->|"verify + promote"| Learning

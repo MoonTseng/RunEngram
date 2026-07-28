@@ -70,6 +70,12 @@ type LearningNoteListInput struct {
 	Limit     int
 }
 
+type UpdateLearningNoteInput struct {
+	Trigger  string
+	Guidance string
+	Scope    string
+}
+
 const (
 	maxLearningNoteTriggerRunes   = 2_000
 	maxLearningNoteGuidanceRunes  = 8_000
@@ -258,6 +264,56 @@ func (s *Service) RejectLearningNote(
 	return note, nil
 }
 
+func (s *Service) UpdateLearningNote(
+	ctx context.Context,
+	id string,
+	agentName string,
+	input UpdateLearningNoteInput,
+) (*model.LearningNote, error) {
+	input.Trigger = strings.TrimSpace(input.Trigger)
+	input.Guidance = strings.TrimSpace(input.Guidance)
+	input.Scope = strings.TrimSpace(input.Scope)
+	if err := validateLearningText("trigger", input.Trigger, true, maxLearningNoteTriggerRunes); err != nil {
+		return nil, err
+	}
+	if err := validateLearningText("guidance", input.Guidance, true, maxLearningNoteGuidanceRunes); err != nil {
+		return nil, err
+	}
+	if err := validateLearningText("scope", input.Scope, false, maxLearningNoteScopeRunes); err != nil {
+		return nil, err
+	}
+	before, task, err := s.learningNoteAndOwnedTask(ctx, id, agentName)
+	if err != nil {
+		return nil, err
+	}
+	if before.Status != model.LearningNotePending {
+		return nil, fmt.Errorf("%w: only pending learning notes can be edited", store.ErrConflict)
+	}
+	note, err := s.st.UpdateLearningNote(ctx, before.ID, input.Trigger, input.Guidance, input.Scope)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.recordTaskEvent(
+		ctx,
+		task.ID,
+		"learning_note_updated",
+		"Updated learning candidate",
+		map[string]any{
+			"learning_note_id": note.ID,
+			"before": map[string]any{
+				"trigger": before.Trigger, "guidance": before.Guidance, "scope": before.Scope,
+			},
+			"after": map[string]any{
+				"trigger": note.Trigger, "guidance": note.Guidance, "scope": note.Scope,
+			},
+		},
+		note.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	return note, nil
+}
+
 func (s *Service) learningNoteAndOwnedTask(
 	ctx context.Context,
 	id string,
@@ -436,7 +492,26 @@ func (s *Service) GetLearningMetrics(ctx context.Context, projectID string) (*mo
 	if err != nil {
 		return nil, err
 	}
-	return s.st.GetLearningMetrics(ctx, project.ID)
+	metrics, err := s.st.GetLearningMetrics(ctx, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	runMetrics, err := s.st.GetRunMetrics(ctx, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	metrics.RunCount = runMetrics.RunCount
+	metrics.CompletedRunCount = runMetrics.CompletedRunCount
+	metrics.ActiveRunCount = runMetrics.ActiveRunCount
+	metrics.BlockedRunCount = runMetrics.BlockedRunCount
+	metrics.ResumedRunCount = runMetrics.ResumedRunCount
+	if metrics.RunCount > 0 {
+		metrics.RunCompletionRate = float64(metrics.CompletedRunCount) / float64(metrics.RunCount)
+	}
+	if metrics.BlockedRunCount > 0 {
+		metrics.RecoveryRate = float64(runMetrics.RecoveredRunCount) / float64(metrics.BlockedRunCount)
+	}
+	return metrics, nil
 }
 
 type rankedCapsule struct {

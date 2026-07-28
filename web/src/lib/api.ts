@@ -119,6 +119,12 @@ export interface LearningNote {
   resolved_at: number;
 }
 
+export interface UpdateLearningNoteInput {
+  trigger: string;
+  guidance: string;
+  scope: string;
+}
+
 export interface ExplorationCapsule {
   id: string;
   project_id: string;
@@ -147,6 +153,26 @@ export interface ContextSnapshot {
   created_at: number;
 }
 
+export interface AgentRun {
+  id: string;
+  task_id: string;
+  project_id: string;
+  agent_name: string;
+  agent_tool: "codex" | "claude-code" | "pi" | "other";
+  status: "running" | "blocked" | "completed" | "failed";
+  summary: string;
+  next_step: string;
+  started_at: number;
+  updated_at: number;
+  completed_at: number;
+}
+
+export interface TaskResumeContext {
+  snapshot: ContextSnapshot;
+  latest_run?: AgentRun;
+  recent_events: TaskEvent[];
+}
+
 export interface LearningMetrics {
   capsule_count: number;
   active_capsule_count: number;
@@ -161,6 +187,13 @@ export interface LearningMetrics {
   stale_count: number;
   helpful_rate: number;
   promotion_rate: number;
+  run_count: number;
+  completed_run_count: number;
+  active_run_count: number;
+  blocked_run_count: number;
+  resumed_run_count: number;
+  run_completion_rate: number;
+  recovery_rate: number;
 }
 
 export interface TaskImage {
@@ -240,6 +273,13 @@ export async function createProject(
   return request<Project>("POST", "/api/v1/projects", { name, description });
 }
 
+export async function deleteProject(projectIdOrName: string): Promise<void> {
+  await request(
+    "DELETE",
+    `/api/v1/projects/${encodeURIComponent(projectIdOrName)}`
+  );
+}
+
 // ─── Tasks ─────────────────────────────────────────────────────────────
 
 export async function listTasks(projectIdOrName: string): Promise<Task[]> {
@@ -254,6 +294,13 @@ export async function getTaskContext(taskId: string): Promise<ContextSnapshot> {
   return request<ContextSnapshot>(
     "GET",
     `/api/v1/tasks/${encodeURIComponent(taskId)}/context`
+  );
+}
+
+export async function getTaskResumeContext(taskId: string): Promise<TaskResumeContext> {
+  return request<TaskResumeContext>(
+    "GET",
+    `/api/v1/tasks/${encodeURIComponent(taskId)}/resume`
   );
 }
 
@@ -297,6 +344,17 @@ export async function listLearningNotes(
     `/api/v1/projects/${encodeURIComponent(projectIdOrName)}/learning-notes${suffix}`
   );
   return response.learning_notes ?? [];
+}
+
+export async function updateLearningNote(
+  noteId: string,
+  input: UpdateLearningNoteInput
+): Promise<LearningNote> {
+  return request<LearningNote>(
+    "PATCH",
+    `/api/v1/learning-notes/${encodeURIComponent(noteId)}`,
+    input
+  );
 }
 
 export async function searchTasks(

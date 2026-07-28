@@ -157,6 +157,13 @@ type LearningMetrics struct {
 	StaleCount         int     `json:"stale_count"`
 	HelpfulRate        float64 `json:"helpful_rate"`
 	PromotionRate      float64 `json:"promotion_rate"`
+	RunCount           int     `json:"run_count"`
+	CompletedRunCount  int     `json:"completed_run_count"`
+	ActiveRunCount     int     `json:"active_run_count"`
+	BlockedRunCount    int     `json:"blocked_run_count"`
+	ResumedRunCount    int     `json:"resumed_run_count"`
+	RunCompletionRate  float64 `json:"run_completion_rate"`
+	RecoveryRate       float64 `json:"recovery_rate"`
 }
 
 type CaptureLearningNoteInput struct {
@@ -168,6 +175,12 @@ type CaptureLearningNoteInput struct {
 	Labels       []string `json:"labels,omitempty"`
 	Fingerprints []string `json:"fingerprints,omitempty"`
 	Producer     string   `json:"producer,omitempty"`
+}
+
+type UpdateLearningNoteInput struct {
+	Trigger  string `json:"trigger"`
+	Guidance string `json:"guidance"`
+	Scope    string `json:"scope,omitempty"`
 }
 
 type CreateCapsuleInput struct {
@@ -277,6 +290,10 @@ func (c *Client) ListProjects() ([]Project, error) {
 	return out.Projects, nil
 }
 
+func (c *Client) DeleteProject(idOrName string) error {
+	return c.do("DELETE", "/api/v1/projects/"+url.PathEscape(idOrName), nil, nil)
+}
+
 // ─── Task endpoints ─────────────────────────────────────────────────────
 
 type CreateTaskInput struct {
@@ -363,6 +380,15 @@ func (c *Client) RejectLearningNote(id, reason string) (*LearningNote, error) {
 	var out LearningNote
 	path := "/api/v1/learning-notes/" + url.PathEscape(id) + "/reject"
 	if err := c.do("POST", path, map[string]string{"reason": reason}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateLearningNote(id string, in UpdateLearningNoteInput) (*LearningNote, error) {
+	var out LearningNote
+	path := "/api/v1/learning-notes/" + url.PathEscape(id)
+	if err := c.do("PATCH", path, in, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

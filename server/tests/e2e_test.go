@@ -1113,6 +1113,33 @@ func TestUnknownProjectIs404(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, st)
 }
 
+func TestDeleteProjectRemovesWorkspaceData(t *testing.T) {
+	base, stop := startServer(t)
+	defer stop()
+
+	var created project
+	st := jsonReq(t, "POST", base+"/api/v1/projects",
+		map[string]any{"name": "temporary-delete-api"}, &created)
+	require.Equal(t, http.StatusCreated, st)
+	var createdTask task
+	st = jsonReq(t, "POST", base+"/api/v1/projects/temporary-delete-api/tasks",
+		map[string]any{
+			"title": "Temporary task", "type": "feature", "auto_start": true,
+		}, &createdTask)
+	require.Equal(t, http.StatusCreated, st)
+
+	var deleted map[string]any
+	st = jsonReq(t, "DELETE", base+"/api/v1/projects/temporary-delete-api", nil, &deleted)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, true, deleted["deleted"])
+	require.Equal(t, created.ID, deleted["id"])
+
+	st = jsonReq(t, "GET", base+"/api/v1/projects/temporary-delete-api/tasks", nil, nil)
+	require.Equal(t, http.StatusNotFound, st)
+	st = jsonReq(t, "GET", base+"/api/v1/tasks/"+createdTask.ID, nil, nil)
+	require.Equal(t, http.StatusNotFound, st)
+}
+
 func TestExplorationCapsuleLearningLoopAtAPI(t *testing.T) {
 	base, stop := startServer(t)
 	defer stop()
@@ -1178,6 +1205,74 @@ func TestExplorationCapsuleLearningLoopAtAPI(t *testing.T) {
 	require.Equal(t, 1.0, metrics.HelpfulRate)
 }
 
+func TestAgentRunResumeLoopAtAPI(t *testing.T) {
+	base, stop := startServer(t)
+	defer stop()
+	token := registerAgent(t, base, "run-api-agent")
+	jsonReq(t, http.MethodPost, base+"/api/v1/projects",
+		map[string]any{"name": "run-api"}, &project{})
+
+	var created task
+	status := jsonReq(t, http.MethodPost, base+"/api/v1/projects/run-api/tasks",
+		map[string]any{
+			"title": "Run loop API", "type": "feature", "auto_start": true,
+		}, &created)
+	require.Equal(t, http.StatusCreated, status)
+	status = jsonReqWithToken(t, http.MethodPost, base+"/api/v1/tasks/"+created.ID+"/claim",
+		map[string]any{"lease": "1h"}, &created, token)
+	require.Equal(t, http.StatusOK, status)
+
+	var started struct {
+		Run     model.AgentRun `json:"run"`
+		Resumed bool           `json:"resumed"`
+	}
+	status = jsonReqWithToken(t, http.MethodPost, base+"/api/v1/tasks/"+created.ID+"/runs",
+		map[string]any{"agent_tool": "codex"}, &started, token)
+	require.Equal(t, http.StatusCreated, status)
+	require.False(t, started.Resumed)
+	run := started.Run
+	require.Equal(t, model.AgentToolCodex, run.AgentTool)
+
+	status = jsonReqWithToken(t, http.MethodPatch, base+"/api/v1/runs/"+run.ID+"/checkpoint",
+		map[string]any{
+			"status": "blocked", "summary": "Need caller trace",
+			"next_step": "Inspect bridge",
+		}, &run, token)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, model.RunStatusBlocked, run.Status)
+
+	var resumed struct {
+		Run     model.AgentRun `json:"run"`
+		Resumed bool           `json:"resumed"`
+	}
+	status = jsonReqWithToken(t, http.MethodPost, base+"/api/v1/tasks/"+created.ID+"/runs",
+		map[string]any{"agent_tool": "claude-code"}, &resumed, token)
+	require.Equal(t, http.StatusOK, status)
+	require.True(t, resumed.Resumed)
+	require.Equal(t, run.ID, resumed.Run.ID)
+	require.Equal(t, model.AgentToolClaudeCode, resumed.Run.AgentTool)
+
+	var event model.RunEvent
+	status = jsonReqWithToken(t, http.MethodPost, base+"/api/v1/runs/"+run.ID+"/events",
+		map[string]any{
+			"kind": "verification.passed", "summary": "Focused tests passed",
+			"details": map[string]any{"command": "go test ./..."},
+		}, &event, token)
+	require.Equal(t, http.StatusCreated, status)
+	require.Equal(t, model.RunEventVerificationPassed, event.Kind)
+
+	status = jsonReqWithToken(t, http.MethodPost, base+"/api/v1/runs/"+run.ID+"/finish",
+		map[string]any{"status": "completed", "summary": "Verified"}, &run, token)
+	require.Equal(t, http.StatusOK, status)
+
+	var resume model.TaskResumeContext
+	status = jsonReqWithToken(t, http.MethodGet, base+"/api/v1/tasks/"+created.ID+"/resume",
+		nil, &resume, token)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, run.ID, resume.LatestRun.ID)
+	require.NotEmpty(t, resume.RecentEvents)
+}
+
 func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {
 	base, stop := startServer(t)
 	defer stop()
@@ -1216,6 +1311,19 @@ func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {
 	require.Equal(t, http.StatusCreated, st)
 	require.Equal(t, model.LearningNotePending, note.Status)
 
+	editBody := map[string]any{
+		"trigger":  "Notion requirements need normalization",
+		"guidance": "Use one-flow/notion-to-prd before PRD analysis",
+		"scope":    "Notion requirement analysis",
+	}
+	st = jsonReqWithToken(t, "PATCH", base+"/api/v1/learning-notes/"+note.ID,
+		editBody, nil, otherToken)
+	require.Equal(t, http.StatusConflict, st)
+	st = jsonReqWithToken(t, "PATCH", base+"/api/v1/learning-notes/"+note.ID,
+		editBody, &note, ownerToken)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, "Use one-flow/notion-to-prd before PRD analysis", note.Guidance)
+
 	st = jsonReqWithToken(t, "POST", base+"/api/v1/learning-notes/"+note.ID+"/promote",
 		map[string]any{"evidence": ""}, nil, ownerToken)
 	require.Equal(t, http.StatusBadRequest, st)
@@ -1228,6 +1336,9 @@ func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {
 		map[string]any{"evidence": "notion-to-prd produced normalized PRD"}, &promoted, ownerToken)
 	require.Equal(t, http.StatusOK, st)
 	require.NotEmpty(t, promoted.CapsuleID)
+	st = jsonReqWithToken(t, "PATCH", base+"/api/v1/learning-notes/"+note.ID,
+		editBody, nil, ownerToken)
+	require.Equal(t, http.StatusConflict, st)
 
 	var projectNotes struct {
 		LearningNotes []model.LearningNote `json:"learning_notes"`

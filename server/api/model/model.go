@@ -141,6 +141,102 @@ type TaskEvent struct {
 	CreatedAt int64          `json:"created_at"`
 }
 
+type AgentTool string
+
+const (
+	AgentToolCodex      AgentTool = "codex"
+	AgentToolClaudeCode AgentTool = "claude-code"
+	AgentToolPi         AgentTool = "pi"
+	AgentToolOther      AgentTool = "other"
+)
+
+func (t AgentTool) Valid() bool {
+	switch t {
+	case AgentToolCodex, AgentToolClaudeCode, AgentToolPi, AgentToolOther:
+		return true
+	default:
+		return false
+	}
+}
+
+type RunStatus string
+
+const (
+	RunStatusRunning   RunStatus = "running"
+	RunStatusBlocked   RunStatus = "blocked"
+	RunStatusCompleted RunStatus = "completed"
+	RunStatusFailed    RunStatus = "failed"
+)
+
+func (s RunStatus) Valid() bool {
+	switch s {
+	case RunStatusRunning, RunStatusBlocked, RunStatusCompleted, RunStatusFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s RunStatus) Terminal() bool {
+	return s == RunStatusCompleted || s == RunStatusFailed
+}
+
+type RunEventKind string
+
+const (
+	RunEventStarted            RunEventKind = "run.started"
+	RunEventResumed            RunEventKind = "run.resumed"
+	RunEventToolCalled         RunEventKind = "tool.called"
+	RunEventCheckpointSaved    RunEventKind = "checkpoint.saved"
+	RunEventBlocked            RunEventKind = "run.blocked"
+	RunEventVerificationPassed RunEventKind = "verification.passed"
+	RunEventLearningDiscovered RunEventKind = "learning.discovered"
+	RunEventCompleted          RunEventKind = "run.completed"
+	RunEventFailed             RunEventKind = "run.failed"
+)
+
+func (k RunEventKind) Valid() bool {
+	switch k {
+	case RunEventStarted, RunEventResumed, RunEventToolCalled,
+		RunEventCheckpointSaved, RunEventBlocked, RunEventVerificationPassed,
+		RunEventLearningDiscovered, RunEventCompleted, RunEventFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+type AgentRun struct {
+	ID          string    `json:"id"`
+	TaskID      string    `json:"task_id"`
+	ProjectID   string    `json:"project_id"`
+	AgentName   string    `json:"agent_name"`
+	AgentTool   AgentTool `json:"agent_tool"`
+	Status      RunStatus `json:"status"`
+	Summary     string    `json:"summary"`
+	NextStep    string    `json:"next_step"`
+	StartedAt   int64     `json:"started_at"`
+	UpdatedAt   int64     `json:"updated_at"`
+	CompletedAt int64     `json:"completed_at"`
+}
+
+type RunEvent struct {
+	ID        string         `json:"id"`
+	RunID     string         `json:"run_id"`
+	TaskID    string         `json:"task_id"`
+	Actor     string         `json:"actor"`
+	Kind      RunEventKind   `json:"kind"`
+	Summary   string         `json:"summary"`
+	Details   map[string]any `json:"details"`
+	CreatedAt int64          `json:"created_at"`
+}
+
+type TaskResumeContext struct {
+	Snapshot     ContextSnapshot `json:"snapshot"`
+	LatestRun    *AgentRun       `json:"latest_run,omitempty"`
+	RecentEvents []*TaskEvent    `json:"recent_events"`
+}
+
 type CapsuleStatus string
 
 const (
@@ -266,6 +362,13 @@ type LearningMetrics struct {
 	StaleCount         int     `json:"stale_count"`
 	HelpfulRate        float64 `json:"helpful_rate"`
 	PromotionRate      float64 `json:"promotion_rate"`
+	RunCount           int     `json:"run_count"`
+	CompletedRunCount  int     `json:"completed_run_count"`
+	ActiveRunCount     int     `json:"active_run_count"`
+	BlockedRunCount    int     `json:"blocked_run_count"`
+	ResumedRunCount    int     `json:"resumed_run_count"`
+	RunCompletionRate  float64 `json:"run_completion_rate"`
+	RecoveryRate       float64 `json:"recovery_rate"`
 }
 
 // Link is a URL attached to a task — typically a spec doc, PR, technical

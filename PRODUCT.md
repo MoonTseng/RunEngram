@@ -69,10 +69,14 @@ The current alpha ships the **task execution and learning kernel**:
   installation and upgrade;
 - local SQLite and filesystem storage;
 - immutable task-start context snapshots;
+- tool-neutral Agent runs with normalized events, compact checkpoints,
+  interruption recovery, and completion/recovery metrics;
 - verified Exploration Capsules with project scope, evidence, fingerprints,
   source task, and producer;
 - agent-driven capture of human corrections and successful recovery paths as
   pending learning notes;
+- capture of explicit reusable project conventions, visible learning receipts,
+  and manual correction of pending candidates before promotion;
 - evidence-gated, idempotent promotion from one pending learning note to one
   active Exploration Capsule, plus explicit rejection;
 - deterministic same-project recall;
@@ -203,10 +207,12 @@ learning improvement.
 3. ✅ Add verified exploration capsules and task-level observed reuse.
 4. ✅ Add agent-driven learning-note capture, evidence-gated promotion, and
    candidate metrics.
-5. Add optional human/team review policy and promotion into skills, tests,
+5. ✅ Add first-class resumable runs, normalized events, visible learning
+   receipts, and editable pending candidates.
+6. Add optional human/team review policy and promotion into skills, tests,
    lint rules, templates, and workflow gates.
-6. Add richer learning-lift measurement after pilot data exists.
-7. Add optional small-team synchronization without weakening local-first use.
+7. Add richer learning-lift measurement after pilot data exists.
+8. Add optional small-team synchronization without weakening local-first use.
 
 Each phase must demonstrate reduced repeated work before the next layer earns
 more complexity.

@@ -200,6 +200,30 @@ func TestTaskHistoryCoversClaimsAndAttachedResources(t *testing.T) {
 	}
 }
 
+func TestDeleteProjectRemovesProjectAndReturnsTaskAttachments(t *testing.T) {
+	ctx := context.Background()
+	s := newSvc(t)
+	project, err := s.CreateProject(ctx, "temporary-smoke-project", "")
+	require.NoError(t, err)
+	task, err := s.CreateTask(
+		ctx, project.ID, "Temporary task", "", model.TaskTypeFeature, 0, true, nil,
+	)
+	require.NoError(t, err)
+	image := &model.Image{TaskID: task.ID, Filename: "screen.png", StoragePath: "/tmp/screen.png"}
+	require.NoError(t, s.AddImage(ctx, image))
+	doc := &model.Doc{TaskID: task.ID, Title: "Spec", StoragePath: "/tmp/spec.md"}
+	require.NoError(t, s.AddDoc(ctx, doc))
+
+	deleted, tasks, err := s.DeleteProject(ctx, project.Name)
+	require.NoError(t, err)
+	require.Equal(t, project.ID, deleted.ID)
+	require.Len(t, tasks, 1)
+	require.Equal(t, "/tmp/screen.png", tasks[0].Images[0].StoragePath)
+	require.Equal(t, "/tmp/spec.md", tasks[0].Docs[0].StoragePath)
+	_, err = s.ResolveProject(ctx, project.ID)
+	require.ErrorIs(t, err, store.ErrNotFound)
+}
+
 func TestSearchTasksRanksShortIDsAndKeywords(t *testing.T) {
 	ctx := context.Background()
 	s := newSvc(t)

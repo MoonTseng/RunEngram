@@ -55,6 +55,12 @@ function TasklineApp() {
     void setProjectKey(p.name);
     if (compactShell) setSidebarOpen(false);
   };
+  const deleteProject = (deleted: Project) => {
+    if (deleted.id === projectId) {
+      void setProjectKey(null);
+      void setViewKey(null);
+    }
+  };
   const selectView = (next: View) => {
     void setViewKey(next === "action" ? null : next);
   };
@@ -71,6 +77,7 @@ function TasklineApp() {
     <Sidebar
       selectedId={project?.id ?? null}
       onSelect={selectProject}
+      onDelete={deleteProject}
       className={
         compactShell && hasProject
           ? "h-full w-72 max-w-[82vw] p-4 shadow-[var(--tl-shadow-lift)]"

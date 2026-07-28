@@ -24,7 +24,7 @@ bash <plugin-root>/scripts/install-runengram.sh
 To install specific version:
 
 ```bash
-RUNENGRAM_VERSION=v0.1.2 bash <plugin-root>/scripts/install-runengram.sh
+RUNENGRAM_VERSION=v0.2.0 bash <plugin-root>/scripts/install-runengram.sh
 ```
 
 4. Run:
