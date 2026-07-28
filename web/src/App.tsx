@@ -334,7 +334,7 @@ function Welcome({
   return (
     <div className="flex-1 flex items-center justify-center bg-[var(--tl-bg)] text-[var(--tl-ink-muted)]">
       <div className="text-center max-w-md space-y-3">
-        <h2 className="text-2xl font-bold text-[var(--tl-ink)]">taskline</h2>
+        <h2 className="text-2xl font-bold text-[var(--tl-ink)]">RunEngram</h2>
         {unresolved && keyValue && (
           <p className="text-sm text-[var(--tl-ochre)]">
             {t("welcome.noProjectPrefix")} <code className="font-mono">{keyValue}</code>{" "}

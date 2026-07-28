@@ -26,7 +26,7 @@ export function Sidebar({ selectedId, onSelect, className }: Props) {
       }
     >
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold tracking-tight text-[var(--tl-ink)]">taskline</h1>
+        <h1 className="text-lg font-bold tracking-tight text-[var(--tl-ink)]">RunEngram</h1>
         <button
           className="text-xs px-2 py-1 rounded-md bg-[var(--tl-primary)] text-[var(--tl-surface)] shadow-[var(--tl-shadow-paper)] hover:bg-[var(--tl-primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tl-focus)]"
           onClick={() => setCreating((v) => !v)}
