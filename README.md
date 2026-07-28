@@ -20,22 +20,40 @@ context the next task can use.
 > automatic learning-note capture, evidence-gated promotion, verified
 > Exploration Capsules, recall, and observed reuse metrics work now.
 
+![RunEngram engineering memory dashboard](./docs/assets/runengram-learning-loop.jpg)
+
+<p align="center"><sub>Real local pilot: a verified human correction becomes reusable project memory.</sub></p>
+
 ## Why RunEngram
 
-AI coding makes one implementation faster. Real engineering still repeats
-expensive work:
+AI coding makes one implementation faster. RunEngram makes verified experience
+compound across tasks.
 
-- every new session needs the same requirements and architecture explained;
-- different agents search the same code paths and dependencies;
-- useful lessons disappear into chat transcripts after a task finishes;
-- boards show where work is, but do not make the next run more accurate;
-- teams cannot tell how much exploration, rework, or manual effort AI removed.
+| Repeated engineering cost | RunEngram response |
+| --- | --- |
+| Re-explain requirements and architecture in every session | Freeze task input and recalled knowledge in a Context Snapshot |
+| Search the same code paths and repeat failed commands | Recall scoped, fingerprinted Exploration Capsules |
+| Lose useful corrections inside chat transcripts | Capture structured Learning Notes with source and scope |
+| Pollute memory with guesses or stale advice | Promote only evidence-backed candidates; reject or retain the rest |
+| Guess whether AI work improved | Measure candidates, promotion, recall, and observed reuse |
 
-RunEngram is not another project-management board. Its target loop is:
+## How the loop compounds
 
-```text
-work context -> agent run -> verified evidence -> learning -> next run
+```mermaid
+flowchart LR
+    A["Task + recalled context"] -->|"L1 · Execute"| B["Coding agent run"]
+    B -->|"L2 · Verify"| C["Tests · review · evidence"]
+    C --> D{"Reusable lesson?"}
+    D -->|"Human correction or recovery"| E["Pending Learning Note"]
+    D -->|"No"| H["Task result only"]
+    E -->|"Verified"| F["Active Exploration Capsule"]
+    E -->|"Unverified or wrong"| G["Keep pending or reject"]
+    F -->|"L3 · Learn"| I["Next task Context Snapshot"]
+    I --> B
 ```
+
+RunEngram coordinates this loop around Codex, Claude Code, Cursor, custom
+agents, and existing engineering SOPs. It does not replace them.
 
 ## What works today
 
