@@ -22,6 +22,9 @@ Date: 2026-07-28
 | `cd web && pnpm build` | Passed |
 | `./scripts/test-skill.sh` | Passed |
 | `./scripts/build.sh` | Passed |
+| local v15 migration and `/healthz` | Passed |
+| three-task pending/promoted recall smoke | Passed |
+| bilingual Knowledge view browser smoke | Passed, zero console errors |
 
 ## Verified invariants
 
@@ -34,6 +37,24 @@ Date: 2026-07-28
 - HTTP shapes stay aligned across server, CLI, and web fixtures;
 - Knowledge view exposes pending, promoted, rejected, and promotion-rate
   metrics without claiming causal time saved.
+
+## End-to-end recall smoke
+
+Project: `automatic-learning-smoke-20260728`
+
+1. Source task captured a pending human-correction note: use
+   `one-flow` `notion-to-prd` before PRD analysis.
+2. Second task generated a context snapshot before promotion and recalled zero
+   capsules.
+3. Note was promoted with scoped Markdown evidence.
+4. Third matching task generated a new context snapshot and recalled the
+   promoted capsule exactly once.
+5. Metrics reported one learning note, one promoted note, zero pending notes,
+   one active capsule, and a 100% promotion rate.
+
+Browser verification confirmed both Chinese and English candidate labels,
+promoted candidate detail, active capsule evidence, scope, fingerprints, and
+source-task provenance. Browser console contained no warnings or errors.
 
 ## Known non-blocking warning
 
