@@ -157,7 +157,7 @@ describe("CreateTaskButton", () => {
     expect(fetchMock.mock.calls[2][1]).toEqual(
       expect.objectContaining({
         method: "PATCH",
-        body: JSON.stringify({ state: "dev" }),
+        body: JSON.stringify({ state: "dev", force: true }),
       })
     );
   });

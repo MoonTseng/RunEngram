@@ -921,7 +921,52 @@ describe("TaskEditor edit actions", () => {
           state: "start",
           priority: 1,
           labels: ["ui"],
+          force: true,
         }),
+      })
+    );
+  });
+
+  it("lets a human update a task claimed by any agent identity", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const claimedTask: Task = {
+      ...task,
+      owner: "teammate-agent-42",
+      claimed_at: 1780051741142,
+      lease_expires_at: 1780055341142,
+    };
+    const updated: Task = { ...claimedTask, state: "spec" };
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { force?: boolean };
+      if (body.force !== true) {
+        return new Response(
+          JSON.stringify({
+            error: "conflict: task is claimed by teammate-agent-42; pass owner or force",
+          }),
+          {
+            status: 409,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+      return new Response(JSON.stringify(updated), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderEditor(onClose, claimedTask);
+
+    await user.selectOptions(screen.getByRole("combobox", { name: /state/i }), "spec");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/tasks/task-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: expect.stringContaining('"force":true'),
       })
     );
   });
@@ -931,7 +976,7 @@ describe("TaskEditor edit actions", () => {
     const onClose = vi.fn();
     const claimedTask: Task = {
       ...task,
-      owner: "yue_zeng",
+      owner: "agent-owner",
       claimed_at: 1780051741142,
       lease_expires_at: 1780055341142,
     };
@@ -950,7 +995,7 @@ describe("TaskEditor edit actions", () => {
         });
       }
       return new Response(
-        JSON.stringify({ error: "conflict: task is claimed by yue_zeng; pass owner or force" }),
+        JSON.stringify({ error: "conflict: task is claimed by agent-owner; pass owner or force" }),
         {
           status: 409,
           headers: { "Content-Type": "application/json" },

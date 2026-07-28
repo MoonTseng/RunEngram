@@ -138,6 +138,15 @@ export interface ExplorationCapsule {
   updated_at: number;
 }
 
+export interface ContextSnapshot {
+  id: string;
+  task_id: string;
+  project_id: string;
+  task: Task;
+  suggested_capsules: ExplorationCapsule[];
+  created_at: number;
+}
+
 export interface LearningMetrics {
   capsule_count: number;
   active_capsule_count: number;
@@ -241,6 +250,13 @@ export async function listTasks(projectIdOrName: string): Promise<Task[]> {
   return r.tasks ?? [];
 }
 
+export async function getTaskContext(taskId: string): Promise<ContextSnapshot> {
+  return request<ContextSnapshot>(
+    "GET",
+    `/api/v1/tasks/${encodeURIComponent(taskId)}/context`
+  );
+}
+
 export async function listCapsules(
   projectIdOrName: string,
   query = "",
@@ -327,7 +343,7 @@ export async function updateTask(
   id: string,
   patch: Partial<
     Pick<Task, "title" | "description" | "type" | "state" | "priority" | "labels">
-  >
+  > & { force?: boolean }
 ): Promise<Task> {
   return request<Task>("PATCH", `/api/v1/tasks/${encodeURIComponent(id)}`, patch);
 }

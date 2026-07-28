@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Smoke tests for every SKILL.md under both skill trays:
+# Smoke tests for every SKILL.md under all skill trays:
 #   - skills/<name>/SKILL.md         — public skills (exported globally)
 #   - .agents/skills/<name>/SKILL.md — project-internal skills
+#   - plugins/*/skills/<name>/SKILL.md — Codex plugin skills
 #
 # Lives outside the skill dirs on purpose — public skills are
 # symlinked into ~/.agents/skills/ and ~/.claude/skills/ by
@@ -55,12 +56,24 @@ required_sections = {
         "### 2. Rebuild AND restart the running server",
         "### 3. Run the FULL test on the restarted binary",
     ],
+    "plugins/runengram/skills/runengram-setup/SKILL.md": [
+        "## Procedure",
+        "## Safety",
+        "runengram status",
+        "taskline status",
+    ],
+    "plugins/runengram/skills/runengram-doctor/SKILL.md": [
+        "Run read-only checks first",
+        "Never silently replace identity",
+        "data directory not writable",
+    ],
 }
 
 paths = sorted(glob.glob("skills/*/SKILL.md")
-               + glob.glob(".agents/skills/*/SKILL.md"))
+               + glob.glob(".agents/skills/*/SKILL.md")
+               + glob.glob("plugins/*/skills/*/SKILL.md"))
 if not paths:
-    sys.exit("FAIL: no SKILL.md files found under skills/ or .agents/skills/")
+    sys.exit("FAIL: no SKILL.md files found")
 
 failed = False
 for path in paths:
@@ -100,3 +113,8 @@ for path in paths:
 if failed:
     sys.exit(1)
 PY
+
+cmp \
+  skills/taskline-management/SKILL.md \
+  plugins/runengram/skills/taskline-management/SKILL.md
+echo "ok: plugin taskline-management skill matches canonical source"

@@ -50,6 +50,15 @@ export function useTaskEvents(taskId: string | null) {
   });
 }
 
+export function useTaskContext(taskId: string | null) {
+  return useQuery({
+    queryKey: ["tasks", taskId, "context"],
+    queryFn: () => api.getTaskContext(taskId!),
+    enabled: !!taskId,
+    retry: false,
+  });
+}
+
 export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
@@ -77,7 +86,7 @@ export function useUpdateTask(projectIdOrName: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof api.updateTask>[1] }) =>
-      api.updateTask(id, patch),
+      api.updateTask(id, { ...patch, force: true }),
     onSuccess: (task) => {
       qc.setQueryData<api.Task[]>(tasksQueryKey(projectIdOrName), (tasks) => upsertTask(tasks, task));
       invalidateTasks(qc, projectIdOrName);

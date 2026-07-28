@@ -1,18 +1,21 @@
 import { useEffect, useState } from "react";
-import { PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
+import { Moon, PanelLeftClose, PanelLeftOpen, Search, Sun } from "lucide-react";
 import { useQueryState } from "nuqs";
 import { Sidebar } from "./components/Sidebar";
 import { KanbanBoard } from "./components/KanbanBoard";
 import { GraphView } from "./components/GraphView";
 import { KnowledgeView } from "./components/KnowledgeView";
+import { ActionConsole } from "./components/ActionConsole";
+import { WorkspaceNav, type WorkspaceView } from "./components/WorkspaceNav";
 import { CreateTaskButton } from "./components/CreateTaskButton";
 import { TaskEditor } from "./components/TaskEditor";
 import { TaskSearchDialog } from "./components/TaskSearchDialog";
 import { useProjects, useTasks } from "./hooks/queries";
 import type { Project, Task } from "./lib/api";
 import { I18nProvider, useI18n } from "./lib/i18n";
+import { useTheme } from "./lib/theme";
 
-type View = "kanban" | "graph" | "knowledge";
+type View = WorkspaceView;
 
 export default function App() {
   return (
@@ -53,7 +56,7 @@ function TasklineApp() {
     if (compactShell) setSidebarOpen(false);
   };
   const selectView = (next: View) => {
-    void setViewKey(next === "kanban" ? null : next);
+    void setViewKey(next === "action" ? null : next);
   };
 
   useEffect(() => {
@@ -136,6 +139,7 @@ function TasklineApp() {
           <Welcome
             unresolved={!!projectKey && projects.isSuccess && !project}
             keyValue={projectKey}
+            loading={projects.isLoading}
           />
         )}
       </main>
@@ -159,6 +163,7 @@ function ProjectWorkspace({
   onToggleSidebar: () => void;
 }) {
   const { locale, setLocale, t } = useI18n();
+  const { theme, toggleTheme } = useTheme();
   const [searchOpen, setSearchOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const tasksQ = useTasks(project.id);
@@ -208,6 +213,7 @@ function ProjectWorkspace({
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-stretch justify-end gap-1.5">
+          <WorkspaceNav view={view} onChange={onViewChange} />
           <button
             type="button"
             aria-label={
@@ -227,19 +233,36 @@ function ProjectWorkspace({
           </button>
           <button
             type="button"
+            aria-label={theme === "dracula" ? t("theme.switchToPaper") : t("theme.switchToDracula")}
+            title={theme === "dracula" ? t("theme.switchToPaper") : t("theme.switchToDracula")}
+            onClick={toggleTheme}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--tl-outline)] bg-[var(--tl-surface-raised)] text-[var(--tl-ink-muted)] shadow-[var(--tl-shadow-paper)] transition hover:border-[var(--tl-outline-strong)] hover:text-[var(--tl-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tl-focus)]"
+          >
+            {theme === "dracula" ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+          <button
+            type="button"
             aria-label={t("actions.searchTasks")}
             title={t("actions.searchTasks")}
             onClick={() => setSearchOpen(true)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--tl-outline)] bg-[var(--tl-surface-raised)] text-[var(--tl-ink-muted)] shadow-[var(--tl-shadow-paper)] transition hover:border-[var(--tl-outline-strong)] hover:bg-[var(--tl-bg-quiet)] hover:text-[var(--tl-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tl-focus)]"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--tl-outline)] bg-[var(--tl-surface-raised)] text-[var(--tl-ink-muted)] shadow-[var(--tl-shadow-paper)] transition hover:border-[var(--tl-outline-strong)] hover:bg-[var(--tl-bg-quiet)] hover:text-[var(--tl-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tl-focus)]"
           >
             <Search size={16} aria-hidden="true" />
           </button>
-          <ViewToggle view={view} onChange={onViewChange} />
           <CreateTaskButton project={project} allTasks={tasks} />
         </div>
       </header>
       <section className="relative flex-1 overflow-hidden bg-[var(--tl-bg)]">
         <div className="box-border h-full">
+          {view === "action" && (
+            <ActionConsole
+              project={project}
+              tasks={tasks}
+              loading={tasksQ.isLoading}
+              error={tasksQ.error}
+              onNavigate={onViewChange}
+            />
+          )}
           {view === "kanban" && <KanbanBoard project={project} />}
           {view === "graph" && <GraphView project={project} />}
           {view === "knowledge" && <KnowledgeView project={project} />}
@@ -268,7 +291,9 @@ function ProjectWorkspace({
 }
 
 function parseViewKey(value: string | null): View {
-  return value === "graph" || value === "knowledge" ? value : "kanban";
+  return value === "kanban" || value === "graph" || value === "knowledge"
+    ? value
+    : "action";
 }
 
 function useMediaQuery(query: string) {
@@ -293,60 +318,46 @@ function useMediaQuery(query: string) {
   return matches;
 }
 
-function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => void }) {
-  const { t } = useI18n();
-  const opts: { id: View; label: string }[] = [
-    { id: "kanban", label: t("views.kanban") },
-    { id: "graph", label: t("views.graph") },
-    { id: "knowledge", label: t("views.knowledge") },
-  ];
-  return (
-    <div
-      aria-label={t("views.board")}
-      className="inline-flex h-8 overflow-hidden rounded-md border border-[var(--tl-outline)] bg-[var(--tl-surface-raised)] text-xs shadow-[var(--tl-shadow-paper)]"
-    >
-      {opts.map((o) => (
-        <button
-          key={o.id}
-          onClick={() => onChange(o.id)}
-          className={
-            "flex h-full items-center px-3 py-0 max-sm:px-2 " +
-            (view === o.id
-              ? "bg-[var(--tl-primary)] text-[var(--tl-surface)]"
-              : "bg-[var(--tl-surface-raised)] text-[var(--tl-ink-muted)] hover:bg-[var(--tl-bg-quiet)] hover:text-[var(--tl-ink)]")
-          }
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function Welcome({
   unresolved,
   keyValue,
+  loading,
 }: {
   unresolved: boolean;
   keyValue: string | null;
+  loading: boolean;
 }) {
   const { t } = useI18n();
   return (
-    <div className="flex-1 flex items-center justify-center bg-[var(--tl-bg)] text-[var(--tl-ink-muted)]">
-      <div className="text-center max-w-md space-y-3">
-        <h2 className="text-2xl font-bold text-[var(--tl-ink)]">RunEngram</h2>
+    <div className="flex-1 overflow-y-auto bg-[var(--tl-bg)] p-6 text-[var(--tl-ink-muted)]">
+      <div className="mx-auto flex min-h-full max-w-4xl items-center justify-center">
+      <div className="panel w-full p-7 lg:p-10">
+        <p className="eyebrow">INTERNAL ALPHA</p>
+        <h2 className="mt-3 text-3xl font-bold text-[var(--tl-ink)]">RunEngram</h2>
+        <p className="mt-3 max-w-2xl text-lg leading-8">{t("welcome.purpose")}</p>
         {unresolved && keyValue && (
-          <p className="text-sm text-[var(--tl-ochre)]">
+          <p className="mt-4 rounded-lg bg-[var(--tl-ochre-soft)] p-3 text-sm text-[var(--tl-ochre)]">
             {t("welcome.noProjectPrefix")} <code className="font-mono">{keyValue}</code>{" "}
             {t("welcome.noProjectSuffix")}
           </p>
         )}
-        <p className="text-sm">
-          {t("welcome.pickProject")} <kbd>{t("sidebar.newProject")}</kbd>.
+        <div className="mt-7 grid gap-4 md:grid-cols-3">
+          {[t("welcome.stepProject"), t("welcome.stepInstall"), t("welcome.stepRun")].map((step, index) => (
+            <div key={step} className="rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-bg-quiet)] p-4">
+              <span className="text-xs font-bold text-[var(--tl-primary)]">0{index + 1}</span>
+              <p className="mt-2 text-sm leading-6 text-[var(--tl-ink)]">{step}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-6 flex flex-wrap gap-4 text-sm font-semibold">
+          <a className="text-[var(--tl-primary)] hover:underline" href="https://github.com/MoonTseng/RunEngram#readme" target="_blank" rel="noreferrer">README</a>
+          <a className="text-[var(--tl-primary)] hover:underline" href="https://github.com/MoonTseng/RunEngram/blob/main/%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.md" target="_blank" rel="noreferrer">{t("welcome.guide")}</a>
+          <a className="text-[var(--tl-primary)] hover:underline" href="https://github.com/MoonTseng/RunEngram/issues" target="_blank" rel="noreferrer">{t("welcome.feedback")}</a>
+        </div>
+        <p className="mt-7 text-sm text-[var(--tl-ink-faint)]">
+          {loading ? t("sidebar.loading") : t("welcome.localBoundary")}
         </p>
-        <p className="text-xs text-[var(--tl-ink-faint)]">
-          {t("welcome.cliSync")}
-        </p>
+      </div>
       </div>
     </div>
   );
