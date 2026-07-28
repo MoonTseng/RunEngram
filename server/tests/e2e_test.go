@@ -99,10 +99,6 @@ func attachTestPullRequest(t *testing.T, base, taskID string) {
 	require.Equal(t, http.StatusCreated, st)
 }
 
-func jsonReqError(t *testing.T, method, requestURL string, body any) (int, string) {
-	return jsonReqErrorWithToken(t, method, requestURL, body, "")
-}
-
 func jsonReqErrorWithToken(t *testing.T, method, requestURL string, body any, token string) (int, string) {
 	t.Helper()
 	raw, err := json.Marshal(body)
