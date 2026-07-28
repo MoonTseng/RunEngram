@@ -1,0 +1,29 @@
+{
+  "name": "runengram",
+  "version": "0.1.0",
+  "description": "Verified engineering memory and task loops for coding agents.",
+  "author": {
+    "name": "MoonTseng",
+    "url": "https://github.com/MoonTseng"
+  },
+  "homepage": "https://github.com/MoonTseng/RunEngram",
+  "repository": "https://github.com/MoonTseng/RunEngram",
+  "license": "MIT",
+  "keywords": ["coding-agent", "engineering-memory", "codex", "workflow"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "RunEngram",
+    "shortDescription": "Make every verified Agent run improve the next.",
+    "longDescription": "Run structured coding-agent tasks, preserve immutable context and verification evidence, then recall trusted engineering experience in later work.",
+    "developerName": "MoonTseng",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://github.com/MoonTseng/RunEngram",
+    "defaultPrompt": [
+      "Set up RunEngram on this computer.",
+      "Create and run this task with RunEngram.",
+      "Check my RunEngram installation."
+    ],
+    "brandColor": "#BD93F9"
+  }
+}
