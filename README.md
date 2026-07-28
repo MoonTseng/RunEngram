@@ -6,36 +6,41 @@
 [![CI](https://github.com/MoonTseng/RunEngram/actions/workflows/ci.yml/badge.svg)](https://github.com/MoonTseng/RunEngram/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 
-**Verified engineering memory for coding agents.**
+**A local task runner and project memory for coding agents.**
 
-Make every agent run improve the next.
+RunEngram started from a problem we kept hitting in real projects: each new
+Codex session needed the same requirements and architecture explained again.
+Useful fixes stayed in old chats. The task board showed progress, but the next
+agent still started from zero.
 
-RunEngram connects engineering work, agent execution, verification evidence,
-and reusable project context in one loop. It does not replace Codex,
-Claude Code, Cursor, or your existing engineering SOP. It gives those tools
-one shared source of work truth and a path for turning verified experience into
-context the next task can use.
+RunEngram keeps the task, the context given to the agent, the test evidence,
+and any reusable lesson in one local store. Codex is the default client, but
+the protocol also works with Claude Code or any tool that can call the CLI.
 
-> **Status: early alpha.** Local task execution, immutable context snapshots,
-> automatic learning-note capture, evidence-gated promotion, verified
-> Exploration Capsules, recall, and observed reuse metrics work now.
+> **Early alpha.** We use it locally. Task execution, context snapshots,
+> learning candidates, review, recall, and reuse metrics are implemented.
+> Automatic conversion of experience into project rules is not.
 
 ![RunEngram Action Console](./docs/assets/runengram-action-console.jpg)
 
-<p align="center"><sub>Action-first workspace: current task, next useful action, blockers, and recalled experience.</sub></p>
+<p align="center"><sub>The default view shows the current task, next action, blockers, and recalled project notes.</sub></p>
 
-## Why RunEngram
+## What it is for
 
-AI coding makes one implementation faster. RunEngram makes verified experience
-compound across tasks.
+A task goes through four steps:
 
-| Repeated engineering cost | RunEngram response |
+1. Write a task with enough context to execute.
+2. An agent claims it and receives a fixed context snapshot.
+3. Tests, review, and delivery evidence are attached to the task.
+4. A useful finding can be reviewed and reused by a later task.
+
+| Problem we saw | What RunEngram does |
 | --- | --- |
-| Re-explain requirements and architecture in every session | Freeze task input and recalled knowledge in a Context Snapshot |
-| Search the same code paths and repeat failed commands | Recall scoped, fingerprinted Exploration Capsules |
-| Lose useful corrections inside chat transcripts | Capture structured Learning Notes with source and scope |
-| Pollute memory with guesses or stale advice | Promote only evidence-backed candidates; reject or retain the rest |
-| Guess whether AI work improved | Measure candidates, promotion, recall, and observed reuse |
+| Requirements and architecture get retyped in every session | Saves the task input and recalled notes in a fixed snapshot |
+| Agents search the same files and repeat failed commands | Stores findings with project scope and code fingerprints |
+| Corrections disappear in chat history | Records them as reviewable learning candidates |
+| Old or guessed advice leaks into later work | Requires evidence before a candidate enters project memory |
+| A team cannot tell whether saved context helped | Records useful, rejected, and stale reuse outcomes |
 
 ![RunEngram verified engineering memory](./docs/assets/runengram-engineering-memory.jpg)
 
@@ -46,28 +51,28 @@ compound across tasks.
 
 </details>
 
-## How the loop compounds
+## How a task moves through RunEngram
 
 ```mermaid
 flowchart LR
     A["Task + recalled context"] -->|"L1 · Execute"| B["Coding agent run"]
     B -->|"L2 · Verify"| C["Tests · review · evidence"]
     C --> D{"Reusable lesson?"}
-    D -->|"Human correction or recovery"| E["Pending Learning Note"]
+    D -->|"Human correction or recovery"| E["Pending project note"]
     D -->|"No"| H["Task result only"]
-    E -->|"Verified"| F["Active Exploration Capsule"]
+    E -->|"Verified"| F["Reviewed project note"]
     E -->|"Unverified or wrong"| G["Keep pending or reject"]
-    F -->|"L3 · Learn"| I["Next task Context Snapshot"]
+    F -->|"L3 · Reuse"| I["Next task context"]
     I --> B
 ```
 
-RunEngram coordinates this loop around Codex, Claude Code, Cursor, custom
-agents, and existing engineering SOPs. It does not replace them.
+RunEngram sits outside the coding agent. Existing prompts, skills, CI, and
+team SOPs stay in place.
 
-## Where RunEngram differs
+## How it compares
 
-RunEngram combines work orchestration and verified, reusable context. This
-table compares each project's documented primary role, not every feature.
+The comparison uses each project's documented main purpose. It is not a
+feature-by-feature scorecard.
 
 | Capability | RunEngram | GitHub Copilot Memory | Claude Code memory | OpenHands | LinearB |
 | --- | --- | --- | --- | --- | --- |
@@ -83,62 +88,46 @@ Sources: [GitHub Copilot Memory](https://docs.github.com/en/copilot/concepts/age
 [OpenHands](https://docs.openhands.dev/overview), and
 [LinearB](https://linearb.io/platform/engineering-metrics).
 
-## What works today
+## Implemented
 
-- **Local-first:** one Go server and one SQLite file; no Redis or PostgreSQL.
-- **One work truth:** web UI, REST API, CLI, and agent skill share the same
-  task state.
-- **Explicit workflow:** `pending → start → spec → dev → test → review → done`.
-- **Structured context:** dependency DAG, priorities, labels, Markdown docs,
-  images, and links.
-- **Safe agent execution:** atomic claims, leases, heartbeats, and recovery.
-- **Explainable history:** append-only task events record actor, time, and
-  field-level changes.
-- **Evidence gates:** GitHub PR, review-thread, and CI checks protect workflow
-  completion.
-- **Human visibility:** Kanban and dependency-graph views.
-- **Bilingual UI:** English and Simplified Chinese.
-- **Immutable Context Snapshot:** each claimed task freezes its starting input
-  and recalled project knowledge on first read.
-- **Exploration Capsules:** verified findings retain source task, scope,
-  evidence, fingerprints, and producer (`codex`, `claude-code`, or another
-  tool).
-- **Automatic learning candidates:** the agent skill captures human
-  corrections and successful recovery paths as pending learning notes.
-- **Evidence-gated promotion:** a verified pending note is atomically promoted
-  into one active Exploration Capsule; rejected notes remain auditable and
-  never enter recall.
-- **Learning visibility:** Knowledge view and CLI show reused tasks, helpful
-  outcomes, learning candidates, promotion rate, rejected knowledge, and
-  helpful rate without inventing time saved.
+- One Go server, one SQLite file, and local attachment storage.
+- Web UI, REST API, CLI, and Agent Skill use the same task records.
+- Task states: `pending → start → spec → dev → test → review → done`.
+- Dependencies, priorities, labels, Markdown documents, images, and links.
+- Atomic claims, leases, heartbeats, and interrupted-task recovery.
+- Append-only task history with actor, time, and changed fields.
+- GitHub PR, review-thread, and CI checks before completion.
+- Action Console, Kanban, dependency graph, and engineering-memory views.
+- English and Simplified Chinese UI; Dracula is the default theme.
+- A fixed context snapshot when an agent starts a task.
+- Project findings with source task, scope, evidence, code fingerprints, and
+  producer (`codex`, `claude-code`, or another tool).
+- Learning candidates for human corrections and successful recovery paths.
+- Manual promotion with evidence; rejected candidates stay out of recall.
+- Counts for candidates, promotions, recalled tasks, and actual reuse results.
 
-The alpha binaries still use the names `taskline-server` and `taskline`. They
-are RunEngram's task execution kernel. The public command names will be unified
-before 1.0.
+The binaries still use the names `taskline-server` and `taskline` for
+compatibility. They will be renamed before 1.0.
 
-## Learning loop
+## How project notes are saved
 
-1. **Context Snapshot** freezes task input and recalled capsules when work
-   starts.
-2. **Learning Note** captures a reusable candidate when a human correction
-   changes the agent's plan or a failed path is replaced by a successful one.
-3. **Verified Promotion** requires concrete evidence, then atomically converts
-   one pending note into one active Exploration Capsule.
-4. **Observed Reuse** records whether recalled memory was helpful, rejected, or
-   stale.
-5. **Evidence to Rule** can later promote repeated project knowledge into a
-   skill, test, lint rule, template, or workflow gate.
-6. **Tool-agnostic Protocol** lets different coding agents and SOPs participate
-   in the same learning loop.
+1. When work starts, RunEngram saves the task input and recalled notes as a
+   snapshot.
+2. A human correction or a successful recovery can create a learning
+   candidate.
+3. The candidate needs concrete evidence before someone promotes it into
+   project memory.
+4. Later tasks record whether the recalled note helped, was rejected, or had
+   become stale.
 
-This is agent-driven capture, not passive transcript ingestion. Raw chats,
-secrets, tokens, hidden reasoning, and unverified guesses are never copied into
-project memory. Only promoted capsules enter future-task recall.
+RunEngram does not copy whole chat transcripts. It does not store secrets,
+tokens, hidden reasoning, or unreviewed guesses. Only reviewed entries are
+recalled by later tasks.
 
 ## Install as a Codex plugin
 
-RunEngram ships as a native Codex marketplace plugin, like other entries in
-Codex **Plugins → Marketplace**:
+The repository contains a Codex marketplace plugin. It appears in Codex
+**Plugins → Marketplace**:
 
 ```bash
 codex plugin marketplace add MoonTseng/RunEngram --ref main

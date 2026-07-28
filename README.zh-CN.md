@@ -3,35 +3,39 @@
 [English](https://github.com/MoonTseng/RunEngram#readme) |
 [**简体中文**](https://github.com/MoonTseng/RunEngram/blob/main/README.zh-CN.md#readme)
 
-**面向 AI 编程智能体的可验证研发记忆系统。**
+**给 Coding Agent 用的本地任务和项目经验工具。**
 
-让每次 Agent 执行，都让下一次开发更快、更准。
+这个项目来自我们在实际开发中反复遇到的几个问题：每次新开 Codex 都要重新
+解释需求和架构；排查结论留在旧对话里；看板记录了任务进度，但下一个 Agent
+仍然从头搜索代码。
 
-RunEngram 把研发任务、Agent 执行、验证证据和可复用项目上下文连接成一个
-闭环。它不替代 Codex、Claude Code、Cursor 或团队现有研发 SOP；它让这些
-工具共享同一份任务事实，并逐步把验证过的经验转化为下一次开发可直接使用
-的项目知识。
+RunEngram 把任务、Agent 收到的上下文、测试证据和可复用结论保存在同一个
+本地服务里。默认配合 Codex 使用，也可以接 Claude Code 或其他能调用 CLI
+的工具。
 
-> **项目状态：早期 Alpha。** 本地任务执行、不可变上下文快照、可验证
-> Exploration Capsule、学习候选自动捕获、基于证据的晋升、自动召回和复用
-> 效果指标已经可用。
+> **当前状态：早期 Alpha。** 我们正在本地试用。任务执行、上下文快照、
+> 经验候选、人工审核、召回和复用统计已经实现；自动生成项目规则还没有做。
 
 ![RunEngram 行动台](./docs/assets/runengram-action-console-zh-CN.jpg)
 
-<p align="center"><sub>行动优先：当前任务、下一步、阻塞因素和已召回经验集中呈现。</sub></p>
+<p align="center"><sub>默认页面直接显示当前任务、下一步、阻塞项和召回的项目经验。</sub></p>
 
-## 为什么需要 RunEngram
+## 它具体做什么
 
-AI Coding 提高一次开发的速度。RunEngram 让经过验证的研发经验在任务之间持续
-复利。
+一次任务只走四步：
 
-| 反复发生的研发成本 | RunEngram 的处理方式 |
+1. 开发者写清任务和验收条件；
+2. Agent 领取任务，并拿到一份固定的上下文快照；
+3. 测试、Review 和交付证据跟着任务保存；
+4. 有复用价值的结论经过确认后，供后面的任务使用。
+
+| 我们遇到的问题 | RunEngram 的处理方式 |
 | --- | --- |
-| 每个新会话重新解释需求和架构 | 用 Context Snapshot 冻结任务输入与召回知识 |
-| 不同 Agent 重复搜索代码、重试失败命令 | 召回带范围与代码指纹的 Exploration Capsule |
-| 有用纠正消失在聊天记录中 | 捕获带来源与适用范围的结构化 Learning Note |
-| 猜测或过期建议污染知识库 | 只有带证据的候选可以晋升，其余保持待验证或拒绝 |
-| 无法判断 AI 是否产生长期收益 | 统计候选、晋升、召回与实际复用结果 |
+| 每次新会话都要重讲需求和架构 | 保存任务输入和本次召回内容，执行中不再漂移 |
+| 不同 Agent 重复搜索代码、重试失败命令 | 按项目范围和代码指纹保存排查结论 |
+| 有用纠正消失在聊天记录里 | 记录为待审核的经验候选 |
+| 猜测或过期建议混进知识库 | 没有验证证据的内容不能进入项目记忆 |
+| 不知道保存的经验有没有帮助 | 记录有效、无效和过期三种复用结果 |
 
 ![RunEngram 可验证工程记忆](./docs/assets/runengram-engineering-memory.jpg)
 
@@ -42,28 +46,27 @@ AI Coding 提高一次开发的速度。RunEngram 让经过验证的研发经验
 
 </details>
 
-## 学习闭环如何产生复利
+## 一次任务怎么走
 
 ```mermaid
 flowchart LR
     A["任务 + 已召回上下文"] -->|"L1 · 执行"| B["Coding Agent 运行"]
     B -->|"L2 · 验证"| C["测试 · Review · 证据"]
     C --> D{"经验可复用？"}
-    D -->|"人工纠正或 Agent 恢复"| E["待验证 Learning Note"]
+    D -->|"人工纠正或 Agent 恢复"| E["待审核经验"]
     D -->|"否"| H["仅保留任务结果"]
-    E -->|"证据验证通过"| F["有效 Exploration Capsule"]
+    E -->|"证据验证通过"| F["项目经验"]
     E -->|"未验证或错误"| G["保持待验证或拒绝"]
-    F -->|"L3 · 学习"| I["下一任务 Context Snapshot"]
+    F -->|"L3 · 复用"| I["下一任务上下文"]
     I --> B
 ```
 
-RunEngram 围绕 Codex、Claude Code、Cursor、自定义 Agent 和团队现有 SOP
-建立闭环，不替代这些工具。
+RunEngram 位于 Coding Agent 外部。原来的提示词、Skill、CI 和团队 SOP
+可以继续使用。
 
-## RunEngram 的差异
+## 和现有工具的区别
 
-RunEngram 同时管理研发工作和经过验证、可复用的工程上下文。下表比较各工具
-官方文档中的核心定位，不代表它们的全部能力。
+下表只比较各工具官方文档里的主要用途，不做笼统的优劣排名。
 
 | 能力 | RunEngram | GitHub Copilot Memory | Claude Code memory | OpenHands | LinearB |
 | --- | --- | --- | --- | --- | --- |
@@ -79,48 +82,39 @@ RunEngram 同时管理研发工作和经过验证、可复用的工程上下文�
 [OpenHands](https://docs.openhands.dev/overview)、
 [LinearB](https://linearb.io/platform/engineering-metrics)。
 
-## 当前可以使用的能力
+## 已经实现
 
-- 本地优先：一个 Go 服务、一个 SQLite 文件，无需 Redis 或 PostgreSQL；
-- 统一任务事实：网页、REST API、CLI 和 Agent Skill 使用同一份状态；
-- 七阶段工作流：`pending → start → spec → dev → test → review → done`；
-- 任务依赖 DAG、优先级、标签、Markdown 文档、图片和链接；
-- 原子领取、租约、心跳和恢复，支持 Agent 中断后继续执行；
-- 追加式任务历史，记录操作者、变更字段和发生时间；
-- GitHub PR、Review 和 CI 证据门禁；
-- 看板与依赖图；
-- Web UI 中英文切换。
-- 任务领取后首次读取会生成不可变 Context Snapshot，冻结任务输入和召回知识；
-- Exploration Capsule 保存来源任务、适用范围、验证证据、代码指纹和生产工具；
-- Agent Skill 会把人工纠正和成功恢复路径捕获为待验证的 Learning Note；
-- 验证后的 Learning Note 原子晋升为唯一的 Exploration Capsule，拒绝项保留审计
-  记录但不会进入召回；
-- “工程记忆”视图与 CLI 展示学习候选、晋升率、复用任务数、有效/无效结果和
-  有效复用率。
+- 一个 Go 服务、一个 SQLite 文件，附件也保存在本机；
+- 网页、REST API、CLI 和 Agent Skill 使用同一份任务数据；
+- 七个任务阶段：`pending → start → spec → dev → test → review → done`；
+- 依赖关系、优先级、标签、Markdown 文档、图片和链接；
+- 原子领取、租约、心跳和中断恢复；
+- 只追加的任务历史，记录操作者、时间和具体改动；
+- 完成任务前检查 GitHub PR、Review 对话和 CI；
+- 行动台、看板、依赖图和工程记忆页面；
+- 中英文切换，默认使用 Dracula 深色主题；
+- Agent 开始任务时生成固定的上下文快照；
+- 项目经验保存来源任务、适用范围、证据、代码指纹和执行工具；
+- 人工纠正和成功恢复可以记录为经验候选；
+- 候选经过人工确认和证据验证后才进入项目记忆；
+- 统计候选、晋升、召回任务数和实际复用结果。
 
-当前 Alpha 版本的二进制仍使用 `taskline-server` 和 `taskline` 命令名。
-它们是 RunEngram 的任务执行内核；正式版前会完成统一命名迁移。
+为了兼容现有脚本，二进制目前仍叫 `taskline-server` 和 `taskline`，1.0 前
+会统一命名。
 
-## RunEngram 的学习闭环
+## 项目经验怎么保存
 
-1. **Context Snapshot**：任务开始时冻结输入与本次召回的工程记忆；
-2. **Learning Note**：人工纠正改变执行方案，或 Agent 从失败路径恢复成功时，
-   自动记录带来源和范围的候选经验；
-3. **Verified Promotion**：候选必须附上可检查的验证证据，之后原子晋升为唯一
-   的 Exploration Capsule；
-4. **Observed Reuse**：记录召回知识是有效、无效还是已经过期；
-5. **Evidence to Rule**：重复出现的项目知识后续可继续晋升为 Skill、测试、
-   Lint 规则、模板或工作流门禁；
-6. **Tool-agnostic Protocol**：允许不同 Agent 和研发 SOP 接入同一学习循环。
+1. 任务开始时，保存任务输入和本次召回内容；
+2. 人工纠正或一次成功的失败恢复，可以生成经验候选；
+3. 候选必须附上具体证据，并由人确认后才能进入项目记忆；
+4. 后续任务记录这条经验是否有效、被拒绝或已经过期。
 
-这是由 Agent Skill 驱动的结构化捕获，不是后台偷录聊天。原始对话、令牌、
-密码、隐藏推理和未验证猜测不会写入项目记忆；只有晋升后的 Capsule 才会被
-后续任务召回。
+RunEngram 不会复制完整聊天记录，也不保存密码、Token、隐藏推理或未经确认
+的猜测。后续任务只会召回审核过的经验。
 
 ## 作为 Codex 插件安装
 
-RunEngram 使用 Codex 原生市场插件结构，会像其他插件一样出现在
-**插件 → 市场**：
+仓库包含一个 Codex 市场插件，安装后会出现在 **插件 → 市场**：
 
 ```bash
 codex plugin marketplace add MoonTseng/RunEngram --ref main
