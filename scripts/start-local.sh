@@ -13,13 +13,13 @@
 #
 # Knobs:
 #   PORT             — port to bind / check (default 8787). Exported to the
-#                      server as TASKLINE_LISTEN=":$PORT" if TASKLINE_LISTEN
+#                      server as TASKLINE_LISTEN="127.0.0.1:$PORT" if TASKLINE_LISTEN
 #                      is not already set, so port-in-use detection and the
 #                      actual listen socket stay in sync.
 #   TASKLINE_LISTEN  — full listen addr (e.g. ":8787" or
 #                      "0.0.0.0:8787"); if set, takes precedence over PORT
 #                      for the server, and PORT is parsed from it for the
-#                      kill check. The default binds all interfaces.
+#                      kill check. The default binds only localhost.
 #   SKIP_BUILD       — if set to a non-empty value, skip ./scripts/build.sh
 #                      and require ./dist/taskline-server to already exist.
 #                      Useful for fast iteration when only restarting after
@@ -28,13 +28,24 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# Seed and load local configuration before resolving port or launching the
+# process. start-local is the owner of this file; taskline-server does not parse
+# dotenv files itself.
+if [[ ! -f .env && -f .env.example ]]; then
+    echo "[start-local] no .env, copying .env.example" >&2
+    cp .env.example .env
+fi
+# shellcheck source=scripts/lib/load-env.sh
+source scripts/lib/load-env.sh
+load_runengram_env .env
+
 # Resolve port. Prefer parsing TASKLINE_LISTEN if the user set it, so the
 # port-occupancy check matches the address the server will actually bind.
 if [[ -n "${TASKLINE_LISTEN:-}" ]]; then
     PORT="${TASKLINE_LISTEN##*:}"
 else
     PORT="${PORT:-8787}"
-    export TASKLINE_LISTEN=":$PORT"
+    export TASKLINE_LISTEN="127.0.0.1:$PORT"
 fi
 
 if ! [[ "$PORT" =~ ^[0-9]+$ ]] || (( PORT < 1 || PORT > 65535 )); then
@@ -46,12 +57,6 @@ fi
 # a stale listener and the server will hit "address already in use".
 if ! command -v lsof >/dev/null 2>&1; then
     echo "[start-local] warning: lsof not found — cannot free port $PORT if held" >&2
-fi
-
-# Seed .env from .env.example on first run, matching the old run-server.sh.
-if [[ ! -f .env && -f .env.example ]]; then
-    echo "[start-local] no .env, copying .env.example" >&2
-    cp .env.example .env
 fi
 
 if [[ -n "${SKIP_BUILD:-}" ]]; then

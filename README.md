@@ -48,6 +48,7 @@ A task goes through five steps:
 | Corrections disappear in chat history | Records them as reviewable learning candidates |
 | Nobody knows what the system learned | Shows a learning receipt on the active task and editable pending candidates |
 | Old or guessed advice leaks into later work | Requires evidence before a candidate enters project memory |
+| A note is correct but its provenance, scope, or replacement is unclear | Links memory through typed provenance, applicability, validation, conflict, and supersession edges |
 | A team cannot tell whether saved context helped | Records useful, rejected, and stale reuse outcomes |
 
 ![RunEngram verified engineering memory](./docs/assets/runengram-engineering-memory.jpg)
@@ -136,6 +137,8 @@ feature-by-feature scorecard.
 | Resumable run checkpoints | Yes, tool-neutral protocol | No | Session transcript | Session state | No |
 | Immutable task context | Yes | No | No | Workspace/session context | No |
 | Evidence-gated memory promotion | Yes | Citation validation | Manual files / auto memory | No | No |
+| Typed memory provenance and replacement | Yes: source, scope, evidence, conflicts, supersession | Citations | No | No | No |
+| Explainable per-run recall | Reason codes, score, warnings, context revision | Citations | No | No | No |
 | Observed memory reuse | Helpful / rejected / stale | No | No | No | No |
 | Default deployment | Local single binary + SQLite | GitHub service | Local files | Local or remote runtime | SaaS |
 
@@ -171,7 +174,16 @@ Sources: [GitHub Copilot Memory](https://docs.github.com/en/copilot/concepts/age
 - Learning candidates for human corrections and successful recovery paths.
 - Durable human-provided project conventions can also become candidates.
 - Pending candidates can be corrected before promotion; promoted memory is not
-  silently rewritten.
+  silently rewritten. Material corrections supersede the old entry and retain
+  both versions.
+- Typed memory relations preserve `derived-from`, `validated-by`, `applies-to`,
+  `supersedes`, `conflicts-with`, and `caused-by` links without adding a graph
+  database.
+- Every recall returns a compact context revision plus structured reasons,
+  scores, and conflict warnings, so an Agent can say why a note entered its
+  context.
+- Promoted-memory edits use optimistic concurrency. A stale browser tab cannot
+  overwrite a newer correction.
 - Manual promotion with evidence; rejected candidates stay out of recall.
 - Counts for runs, completion, blocked recovery, candidates, promotions,
   recalled tasks, and actual reuse results.
@@ -226,6 +238,38 @@ One task can update one outcome per memory item, so repeatedly clicking
 helpful reuse adds 0.10, rejection subtracts 0.15, and stale memory drops to
 zero. This is confidence in observed reuse, not a claim that RunEngram measured
 hours saved.
+
+### How memory stays connected
+
+RunEngram stores memory as small reviewed records plus typed edges:
+
+```mermaid
+flowchart LR
+    T["Source task"] -->|"derived-from"| M["Verified memory"]
+    E["Test or review evidence"] -->|"validated-by"| M
+    M -->|"applies-to"| S["Module · platform · version · scope"]
+    N["Corrected memory"] -->|"supersedes"| M
+    X["Competing finding"] -->|"conflicts-with"| M
+```
+
+This is a local SQLite adjacency model, not a new graph service. `supersedes`
+marks the old entry stale, while conflicts remain visible as warnings. Recall
+combines broad project rules, relevant scoped experience, explicit
+`applies-to` edges, confidence, and observed reuse. Returned explanations let
+the Agent distinguish “project rule” from “matched this module” instead of
+blindly accepting an opaque top-k result.
+
+Edits include the last observed update timestamp. If another reviewer changed
+the same memory first, RunEngram returns a conflict and asks the browser to
+reload instead of losing either correction.
+
+Agents use the same guard through the CLI:
+
+```bash
+taskline capsule edit <capsule-id> \
+  --expected-updated-at <updated-at-ms> \
+  --summary "<corrected guidance>"
+```
 
 ## Install as a Codex plugin
 

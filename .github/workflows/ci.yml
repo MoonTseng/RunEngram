@@ -53,6 +53,9 @@ jobs:
       - name: Run Go tests
         working-directory: ${{ matrix.module }}
         run: go test ./... -count=1
+      - name: Test local startup environment loading
+        if: matrix.module == 'cli'
+        run: ./scripts/test-start-local-env.sh
 
   web:
     runs-on: ubuntu-latest

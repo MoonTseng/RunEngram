@@ -10,7 +10,7 @@ func TestCapsuleWorkflowCommandsRegistered(t *testing.T) {
 	if findCommand(rootCmd, "capsule") == nil {
 		t.Fatal("capsule command not registered")
 	}
-	for _, name := range []string{"list", "create", "use", "archive", "metrics"} {
+	for _, name := range []string{"list", "create", "edit", "use", "archive", "metrics", "relate", "unrelate"} {
 		if findCommand(capsuleCmd, name) == nil {
 			t.Fatalf("capsule %s command not registered", name)
 		}
@@ -28,6 +28,16 @@ func TestCapsuleWorkflowCommandsRegistered(t *testing.T) {
 	}
 	if capsuleUseCmd.Flags().Lookup("outcome") == nil {
 		t.Fatal("capsule use --outcome flag not registered")
+	}
+	for _, flag := range []string{"type", "target-kind", "target", "note"} {
+		if capsuleRelateCmd.Flags().Lookup(flag) == nil {
+			t.Fatalf("capsule relate --%s flag not registered", flag)
+		}
+	}
+	for _, flag := range []string{"title", "summary", "trigger", "scope", "evidence-file", "expected-updated-at"} {
+		if capsuleEditCmd.Flags().Lookup(flag) == nil {
+			t.Fatalf("capsule edit --%s flag not registered", flag)
+		}
 	}
 }
 

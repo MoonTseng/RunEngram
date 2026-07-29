@@ -87,6 +87,10 @@ The current alpha ships the **task execution and learning kernel**:
 - evidence-gated, idempotent promotion from one pending learning note to one
   active Exploration Capsule, plus explicit rejection;
 - deterministic, budgeted same-project recall with explainable confidence;
+- typed memory provenance, validation, applicability, conflict, causal, and
+  supersession relations;
+- per-recall reason codes, warnings, and stable context revisions;
+- compare-and-swap review edits that prevent silent concurrent overwrites;
 - observed helpful, rejected, and stale reuse outcomes plus honest aggregate
   metrics;
 - candidate, pending, promoted, rejected, and promotion-rate visibility in the
@@ -230,10 +234,12 @@ learning improvement.
    decisions.
 7. ✅ Add project-rule/scoped-experience memory layers, dynamic recall, and
    observed confidence states.
-8. Add optional human/team review policy and promotion into skills, tests,
+8. ✅ Add typed memory provenance, scope, conflict, supersession, explainable
+   recall, and optimistic review updates.
+9. Add optional human/team review policy and promotion into skills, tests,
    lint rules, templates, and workflow gates.
-9. Add richer learning-lift measurement after pilot data exists.
-10. Add optional small-team synchronization without weakening local-first use.
+10. Add richer learning-lift measurement after pilot data exists.
+11. Add optional small-team synchronization without weakening local-first use.
 
 Each phase must demonstrate reduced repeated work before the next layer earns
 more complexity.

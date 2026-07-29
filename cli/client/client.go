@@ -106,45 +106,74 @@ type LearningNote struct {
 }
 
 type ExplorationCapsule struct {
-	ID            string   `json:"id"`
-	ProjectID     string   `json:"project_id"`
-	SourceTaskID  string   `json:"source_task_id"`
-	MemoryClass   string   `json:"memory_class"`
-	Trigger       string   `json:"trigger"`
-	Title         string   `json:"title"`
-	Summary       string   `json:"summary"`
-	Scope         string   `json:"scope"`
-	Evidence      string   `json:"evidence"`
-	Labels        []string `json:"labels"`
-	Fingerprints  []string `json:"fingerprints"`
-	Producer      string   `json:"producer"`
-	Status        string   `json:"status"`
-	Validation    string   `json:"validation"`
-	Confidence    float64  `json:"confidence"`
-	UseCount      int      `json:"use_count"`
-	HelpfulCount  int      `json:"helpful_count"`
-	RejectedCount int      `json:"rejected_count"`
-	CreatedAt     int64    `json:"created_at"`
-	UpdatedAt     int64    `json:"updated_at"`
+	ID            string           `json:"id"`
+	ProjectID     string           `json:"project_id"`
+	SourceTaskID  string           `json:"source_task_id"`
+	MemoryClass   string           `json:"memory_class"`
+	Trigger       string           `json:"trigger"`
+	Title         string           `json:"title"`
+	Summary       string           `json:"summary"`
+	Scope         string           `json:"scope"`
+	Evidence      string           `json:"evidence"`
+	Labels        []string         `json:"labels"`
+	Fingerprints  []string         `json:"fingerprints"`
+	Producer      string           `json:"producer"`
+	Status        string           `json:"status"`
+	Validation    string           `json:"validation"`
+	Confidence    float64          `json:"confidence"`
+	UseCount      int              `json:"use_count"`
+	HelpfulCount  int              `json:"helpful_count"`
+	RejectedCount int              `json:"rejected_count"`
+	Relations     []MemoryRelation `json:"relations"`
+	CreatedAt     int64            `json:"created_at"`
+	UpdatedAt     int64            `json:"updated_at"`
+}
+
+type MemoryRelation struct {
+	ID              string `json:"id"`
+	ProjectID       string `json:"project_id"`
+	SourceCapsuleID string `json:"source_capsule_id"`
+	Type            string `json:"type"`
+	TargetKind      string `json:"target_kind"`
+	TargetRef       string `json:"target_ref"`
+	Note            string `json:"note"`
+	Direction       string `json:"direction"`
+	CreatedAt       int64  `json:"created_at"`
+}
+
+type MemoryRecallReason struct {
+	Code  string `json:"code"`
+	Value string `json:"value"`
+}
+
+type MemoryRecallExplanation struct {
+	CapsuleID string               `json:"capsule_id"`
+	Score     float64              `json:"score"`
+	Reasons   []MemoryRecallReason `json:"reasons"`
+	Warnings  []string             `json:"warnings"`
 }
 
 type ContextSnapshot struct {
-	ID                string               `json:"id"`
-	TaskID            string               `json:"task_id"`
-	ProjectID         string               `json:"project_id"`
-	Task              Task                 `json:"task"`
-	ProjectRules      []ExplorationCapsule `json:"project_rules"`
-	SuggestedCapsules []ExplorationCapsule `json:"suggested_capsules"`
-	CreatedAt         int64                `json:"created_at"`
+	ID                string                    `json:"id"`
+	TaskID            string                    `json:"task_id"`
+	ProjectID         string                    `json:"project_id"`
+	Task              Task                      `json:"task"`
+	ProjectRules      []ExplorationCapsule      `json:"project_rules"`
+	SuggestedCapsules []ExplorationCapsule      `json:"suggested_capsules"`
+	ContextRevision   string                    `json:"context_revision"`
+	Explanations      []MemoryRecallExplanation `json:"explanations"`
+	CreatedAt         int64                     `json:"created_at"`
 }
 
 type MemoryRecall struct {
-	TaskID            string               `json:"task_id"`
-	ProjectID         string               `json:"project_id"`
-	Query             string               `json:"query"`
-	ProjectRules      []ExplorationCapsule `json:"project_rules"`
-	SuggestedCapsules []ExplorationCapsule `json:"suggested_capsules"`
-	RecalledAt        int64                `json:"recalled_at"`
+	TaskID            string                    `json:"task_id"`
+	ProjectID         string                    `json:"project_id"`
+	Query             string                    `json:"query"`
+	ProjectRules      []ExplorationCapsule      `json:"project_rules"`
+	SuggestedCapsules []ExplorationCapsule      `json:"suggested_capsules"`
+	ContextRevision   string                    `json:"context_revision"`
+	Explanations      []MemoryRecallExplanation `json:"explanations"`
+	RecalledAt        int64                     `json:"recalled_at"`
 }
 
 type CapsuleUsage struct {
@@ -208,6 +237,22 @@ type CreateCapsuleInput struct {
 	Labels       []string `json:"labels,omitempty"`
 	Fingerprints []string `json:"fingerprints,omitempty"`
 	Producer     string   `json:"producer,omitempty"`
+}
+
+type UpdateCapsuleInput struct {
+	Title             *string `json:"title,omitempty"`
+	Summary           *string `json:"summary,omitempty"`
+	Trigger           *string `json:"trigger,omitempty"`
+	Scope             *string `json:"scope,omitempty"`
+	Evidence          *string `json:"evidence,omitempty"`
+	ExpectedUpdatedAt int64   `json:"expected_updated_at"`
+}
+
+type CreateMemoryRelationInput struct {
+	Type       string `json:"type"`
+	TargetKind string `json:"target_kind"`
+	TargetRef  string `json:"target_ref"`
+	Note       string `json:"note,omitempty"`
 }
 
 // TaskEvent is one append-only task operation record.
@@ -464,6 +509,14 @@ func (c *Client) UpdateCapsuleStatus(id, status string) (*ExplorationCapsule, er
 	return &out, nil
 }
 
+func (c *Client) UpdateCapsule(id string, in UpdateCapsuleInput) (*ExplorationCapsule, error) {
+	var out ExplorationCapsule
+	if err := c.do("PATCH", "/api/v1/capsules/"+url.PathEscape(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *Client) RecordCapsuleUsage(id, taskID, outcome, notes string) (*CapsuleUsage, error) {
 	var out CapsuleUsage
 	body := map[string]string{"task_id": taskID, "outcome": outcome, "notes": notes}
@@ -471,6 +524,19 @@ func (c *Client) RecordCapsuleUsage(id, taskID, outcome, notes string) (*Capsule
 		return nil, err
 	}
 	return &out, nil
+}
+
+func (c *Client) CreateMemoryRelation(id string, in CreateMemoryRelationInput) (*MemoryRelation, error) {
+	var out MemoryRelation
+	path := "/api/v1/capsules/" + url.PathEscape(id) + "/relations"
+	if err := c.do("POST", path, in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteMemoryRelation(id string) error {
+	return c.do("DELETE", "/api/v1/memory-relations/"+url.PathEscape(id), nil, nil)
 }
 
 func (c *Client) GetLearningMetrics(projectIDOrName string) (*LearningMetrics, error) {

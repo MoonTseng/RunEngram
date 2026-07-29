@@ -78,6 +78,9 @@ var schemaGenericWorkflows string
 //go:embed schema/0020_layered_memory.sql
 var schemaLayeredMemory string
 
+//go:embed schema/0021_memory_graph.sql
+var schemaMemoryGraph string
+
 // schemaMigrations defines the canonical migration set, keyed by
 // monotonically increasing version. We track the last-applied version in
 // SQLite's built-in `PRAGMA user_version` and only run migrations whose
@@ -110,6 +113,7 @@ var schemaMigrations = []migration{
 	{version: 18, sql: schemaRunInterruptGuards},
 	{version: 19, sql: schemaGenericWorkflows},
 	{version: 20, sql: schemaLayeredMemory},
+	{version: 21, sql: schemaMemoryGraph},
 }
 
 // ErrNotFound is returned when a lookup misses.
@@ -2191,15 +2195,16 @@ type CapsuleFilter struct {
 }
 
 type CapsuleUpdate struct {
-	MemoryClass  *model.MemoryClass
-	Trigger      *string
-	Title        *string
-	Summary      *string
-	Scope        *string
-	Evidence     *string
-	Labels       *[]string
-	Fingerprints *[]string
-	Status       *model.CapsuleStatus
+	MemoryClass       *model.MemoryClass
+	Trigger           *string
+	Title             *string
+	Summary           *string
+	Scope             *string
+	Evidence          *string
+	Labels            *[]string
+	Fingerprints      *[]string
+	Status            *model.CapsuleStatus
+	ExpectedUpdatedAt *int64
 }
 
 func (s *Store) CreateCapsule(ctx context.Context, capsule *model.ExplorationCapsule) error {
@@ -2260,7 +2265,16 @@ func (s *Store) CreateCapsule(ctx context.Context, capsule *model.ExplorationCap
 
 func (s *Store) GetCapsule(ctx context.Context, id string) (*model.ExplorationCapsule, error) {
 	row := s.db.QueryRowContext(ctx, capsuleSelectSQL+` WHERE c.id = ? GROUP BY c.id`, id)
-	return scanCapsule(row)
+	capsule, err := scanCapsule(row)
+	if err != nil {
+		return nil, err
+	}
+	relations, err := s.ListMemoryRelations(ctx, capsule.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	attachMemoryRelations([]*model.ExplorationCapsule{capsule}, relations)
+	return capsule, nil
 }
 
 func (s *Store) ListCapsules(ctx context.Context, filter CapsuleFilter) ([]model.ExplorationCapsule, error) {
@@ -2300,7 +2314,22 @@ func (s *Store) ListCapsules(ctx context.Context, filter CapsuleFilter) ([]model
 		}
 		out = append(out, *capsule)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	relations, err := s.ListMemoryRelations(ctx, filter.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	capsulePointers := make([]*model.ExplorationCapsule, len(out))
+	for index := range out {
+		capsulePointers[index] = &out[index]
+	}
+	attachMemoryRelations(capsulePointers, relations)
+	return out, nil
 }
 
 func (s *Store) UpdateCapsule(ctx context.Context, id string, update CapsuleUpdate) (*model.ExplorationCapsule, error) {
@@ -2347,20 +2376,115 @@ func (s *Store) UpdateCapsule(ctx context.Context, id string, update CapsuleUpda
 	labelsJSON, _ := encodeLabels(current.Labels)
 	fingerprintsJSON, _ := encodeLabels(current.Fingerprints)
 	updatedAt := now()
-	result, err := s.db.ExecContext(ctx, `
+	if updatedAt <= current.UpdatedAt {
+		updatedAt = current.UpdatedAt + 1
+	}
+	query := `
 		UPDATE exploration_capsules
 		   SET memory_class=?,trigger=?,title=?,summary=?,scope=?,evidence=?,labels=?,fingerprints=?,status=?,updated_at=?
-		 WHERE id=?`,
+		 WHERE id=?`
+	args := []any{
 		current.MemoryClass, current.Trigger, current.Title, current.Summary, current.Scope, current.Evidence, labelsJSON,
-		fingerprintsJSON, current.Status, updatedAt, id)
+		fingerprintsJSON, current.Status, updatedAt, id,
+	}
+	if update.ExpectedUpdatedAt != nil {
+		query += ` AND updated_at=?`
+		args = append(args, *update.ExpectedUpdatedAt)
+	}
+	result, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	affected, _ := result.RowsAffected()
 	if affected == 0 {
+		if update.ExpectedUpdatedAt != nil {
+			if _, getErr := s.GetCapsule(ctx, id); getErr == nil {
+				return nil, ErrConflict
+			} else if !errors.Is(getErr, ErrNotFound) {
+				return nil, getErr
+			}
+		}
 		return nil, ErrNotFound
 	}
 	return s.GetCapsule(ctx, id)
+}
+
+func (s *Store) CreateMemoryRelation(ctx context.Context, relation model.MemoryRelation) (*model.MemoryRelation, error) {
+	relation.ID = newID()
+	relation.CreatedAt = now()
+	relation.Direction = model.MemoryRelationOutgoing
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO memory_relations(
+			id,project_id,source_capsule_id,relation_type,target_kind,target_ref,note,created_at
+		) VALUES(?,?,?,?,?,?,?,?)`,
+		relation.ID, relation.ProjectID, relation.SourceCapsuleID, relation.Type,
+		relation.TargetKind, relation.TargetRef, relation.Note, relation.CreatedAt,
+	)
+	if isUniqueErr(err) {
+		return nil, ErrConflict
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &relation, nil
+}
+
+func (s *Store) ListMemoryRelations(ctx context.Context, projectID string) ([]model.MemoryRelation, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id,project_id,source_capsule_id,relation_type,target_kind,target_ref,note,created_at
+		  FROM memory_relations
+		 WHERE project_id=?
+		 ORDER BY created_at ASC,id ASC`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]model.MemoryRelation, 0)
+	for rows.Next() {
+		var relation model.MemoryRelation
+		if err := rows.Scan(
+			&relation.ID, &relation.ProjectID, &relation.SourceCapsuleID, &relation.Type,
+			&relation.TargetKind, &relation.TargetRef, &relation.Note, &relation.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		relation.Direction = model.MemoryRelationOutgoing
+		out = append(out, relation)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteMemoryRelation(ctx context.Context, id string) error {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM memory_relations WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func attachMemoryRelations(capsules []*model.ExplorationCapsule, relations []model.MemoryRelation) {
+	byID := make(map[string]*model.ExplorationCapsule, len(capsules))
+	for _, capsule := range capsules {
+		capsule.Relations = []model.MemoryRelation{}
+		byID[capsule.ID] = capsule
+	}
+	for _, relation := range relations {
+		if source := byID[relation.SourceCapsuleID]; source != nil {
+			relation.Direction = model.MemoryRelationOutgoing
+			source.Relations = append(source.Relations, relation)
+		}
+		if relation.TargetKind == model.MemoryRelationTargetCapsule {
+			if target := byID[relation.TargetRef]; target != nil {
+				incoming := relation
+				incoming.Direction = model.MemoryRelationIncoming
+				target.Relations = append(target.Relations, incoming)
+			}
+		}
+	}
 }
 
 func (s *Store) GetContextSnapshot(ctx context.Context, taskID string) (*model.ContextSnapshot, error) {

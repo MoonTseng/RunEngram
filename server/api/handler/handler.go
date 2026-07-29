@@ -91,6 +91,8 @@ func (h *Handler) Register(s *server.Hertz) {
 	v1.GET("/capsules/:id", h.getCapsule)
 	v1.PATCH("/capsules/:id", h.updateCapsule)
 	v1.POST("/capsules/:id/usages", h.recordCapsuleUsage)
+	v1.POST("/capsules/:id/relations", h.createMemoryRelation)
+	v1.DELETE("/memory-relations/:id", h.deleteMemoryRelation)
 	v1.POST("/learning-notes/:id/promote", h.promoteLearningNote)
 	v1.POST("/learning-notes/:id/reject", h.rejectLearningNote)
 	v1.PATCH("/learning-notes/:id", h.updateLearningNote)
@@ -278,15 +280,23 @@ type createCapsuleReq struct {
 }
 
 type updateCapsuleReq struct {
-	MemoryClass  *string   `json:"memory_class,omitempty"`
-	Trigger      *string   `json:"trigger,omitempty"`
-	Title        *string   `json:"title,omitempty"`
-	Summary      *string   `json:"summary,omitempty"`
-	Scope        *string   `json:"scope,omitempty"`
-	Evidence     *string   `json:"evidence,omitempty"`
-	Labels       *[]string `json:"labels,omitempty"`
-	Fingerprints *[]string `json:"fingerprints,omitempty"`
-	Status       *string   `json:"status,omitempty"`
+	MemoryClass       *string   `json:"memory_class,omitempty"`
+	Trigger           *string   `json:"trigger,omitempty"`
+	Title             *string   `json:"title,omitempty"`
+	Summary           *string   `json:"summary,omitempty"`
+	Scope             *string   `json:"scope,omitempty"`
+	Evidence          *string   `json:"evidence,omitempty"`
+	Labels            *[]string `json:"labels,omitempty"`
+	Fingerprints      *[]string `json:"fingerprints,omitempty"`
+	Status            *string   `json:"status,omitempty"`
+	ExpectedUpdatedAt *int64    `json:"expected_updated_at,omitempty"`
+}
+
+type createMemoryRelationReq struct {
+	Type       string `json:"type"`
+	TargetKind string `json:"target_kind"`
+	TargetRef  string `json:"target_ref"`
+	Note       string `json:"note,omitempty"`
 }
 
 type captureLearningNoteReq struct {
@@ -514,12 +524,40 @@ func (h *Handler) updateCapsule(ctx context.Context, c *app.RequestContext) {
 		MemoryClass: memoryClass, Trigger: req.Trigger,
 		Title: req.Title, Summary: req.Summary, Scope: req.Scope, Evidence: req.Evidence,
 		Labels: req.Labels, Fingerprints: req.Fingerprints, Status: status,
+		ExpectedUpdatedAt: req.ExpectedUpdatedAt,
 	})
 	if err != nil {
 		writeServiceError(c, err)
 		return
 	}
 	writeJSON(c, http.StatusOK, capsule)
+}
+
+func (h *Handler) createMemoryRelation(ctx context.Context, c *app.RequestContext) {
+	var req createMemoryRelationReq
+	if err := decodeJSON(c, &req); err != nil {
+		writeError(c, http.StatusBadRequest, err)
+		return
+	}
+	relation, err := h.svc.CreateMemoryRelation(ctx, c.Param("id"), service.CreateMemoryRelationInput{
+		Type:       model.MemoryRelationType(req.Type),
+		TargetKind: model.MemoryRelationTargetKind(req.TargetKind),
+		TargetRef:  req.TargetRef,
+		Note:       req.Note,
+	})
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusCreated, relation)
+}
+
+func (h *Handler) deleteMemoryRelation(ctx context.Context, c *app.RequestContext) {
+	if err := h.svc.DeleteMemoryRelation(ctx, c.Param("id")); err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 type recordCapsuleUsageReq struct {

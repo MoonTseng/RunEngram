@@ -410,6 +410,44 @@ func (c MemoryClass) Valid() bool {
 	return c == MemoryClassExperience || c == MemoryClassProjectRule
 }
 
+type MemoryRelationType string
+
+const (
+	MemoryRelationDerivedFrom   MemoryRelationType = "derived-from"
+	MemoryRelationValidatedBy   MemoryRelationType = "validated-by"
+	MemoryRelationAppliesTo     MemoryRelationType = "applies-to"
+	MemoryRelationSupersedes    MemoryRelationType = "supersedes"
+	MemoryRelationConflictsWith MemoryRelationType = "conflicts-with"
+	MemoryRelationCausedBy      MemoryRelationType = "caused-by"
+)
+
+func (r MemoryRelationType) Valid() bool {
+	return r == MemoryRelationDerivedFrom || r == MemoryRelationValidatedBy ||
+		r == MemoryRelationAppliesTo || r == MemoryRelationSupersedes ||
+		r == MemoryRelationConflictsWith || r == MemoryRelationCausedBy
+}
+
+type MemoryRelationTargetKind string
+
+const (
+	MemoryRelationTargetCapsule  MemoryRelationTargetKind = "capsule"
+	MemoryRelationTargetTask     MemoryRelationTargetKind = "task"
+	MemoryRelationTargetArtifact MemoryRelationTargetKind = "artifact"
+	MemoryRelationTargetScope    MemoryRelationTargetKind = "scope"
+)
+
+func (k MemoryRelationTargetKind) Valid() bool {
+	return k == MemoryRelationTargetCapsule || k == MemoryRelationTargetTask ||
+		k == MemoryRelationTargetArtifact || k == MemoryRelationTargetScope
+}
+
+type MemoryRelationDirection string
+
+const (
+	MemoryRelationOutgoing MemoryRelationDirection = "outgoing"
+	MemoryRelationIncoming MemoryRelationDirection = "incoming"
+)
+
 type MemoryValidation string
 
 const (
@@ -498,29 +536,60 @@ type ExplorationCapsule struct {
 	UseCount      int              `json:"use_count"`
 	HelpfulCount  int              `json:"helpful_count"`
 	RejectedCount int              `json:"rejected_count"`
+	Relations     []MemoryRelation `json:"relations"`
 	CreatedAt     int64            `json:"created_at"`
 	UpdatedAt     int64            `json:"updated_at"`
 }
 
+// MemoryRelation connects verified memory to evidence, scope, or other memory.
+type MemoryRelation struct {
+	ID              string                   `json:"id"`
+	ProjectID       string                   `json:"project_id"`
+	SourceCapsuleID string                   `json:"source_capsule_id"`
+	Type            MemoryRelationType       `json:"type"`
+	TargetKind      MemoryRelationTargetKind `json:"target_kind"`
+	TargetRef       string                   `json:"target_ref"`
+	Note            string                   `json:"note"`
+	Direction       MemoryRelationDirection  `json:"direction"`
+	CreatedAt       int64                    `json:"created_at"`
+}
+
+// MemoryRecallExplanation makes automatic context selection inspectable.
+type MemoryRecallReason struct {
+	Code  string `json:"code"`
+	Value string `json:"value,omitempty"`
+}
+
+type MemoryRecallExplanation struct {
+	CapsuleID string               `json:"capsule_id"`
+	Score     float64              `json:"score"`
+	Reasons   []MemoryRecallReason `json:"reasons"`
+	Warnings  []string             `json:"warnings"`
+}
+
 // ContextSnapshot freezes task input and suggested memory at first read.
 type ContextSnapshot struct {
-	ID                string               `json:"id"`
-	TaskID            string               `json:"task_id"`
-	ProjectID         string               `json:"project_id"`
-	Task              Task                 `json:"task"`
-	ProjectRules      []ExplorationCapsule `json:"project_rules"`
-	SuggestedCapsules []ExplorationCapsule `json:"suggested_capsules"`
-	CreatedAt         int64                `json:"created_at"`
+	ID                string                    `json:"id"`
+	TaskID            string                    `json:"task_id"`
+	ProjectID         string                    `json:"project_id"`
+	Task              Task                      `json:"task"`
+	ProjectRules      []ExplorationCapsule      `json:"project_rules"`
+	SuggestedCapsules []ExplorationCapsule      `json:"suggested_capsules"`
+	ContextRevision   string                    `json:"context_revision"`
+	Explanations      []MemoryRecallExplanation `json:"explanations"`
+	CreatedAt         int64                     `json:"created_at"`
 }
 
 // MemoryRecall is a live, query-specific recall during task execution.
 type MemoryRecall struct {
-	TaskID            string               `json:"task_id"`
-	ProjectID         string               `json:"project_id"`
-	Query             string               `json:"query"`
-	ProjectRules      []ExplorationCapsule `json:"project_rules"`
-	SuggestedCapsules []ExplorationCapsule `json:"suggested_capsules"`
-	RecalledAt        int64                `json:"recalled_at"`
+	TaskID            string                    `json:"task_id"`
+	ProjectID         string                    `json:"project_id"`
+	Query             string                    `json:"query"`
+	ProjectRules      []ExplorationCapsule      `json:"project_rules"`
+	SuggestedCapsules []ExplorationCapsule      `json:"suggested_capsules"`
+	ContextRevision   string                    `json:"context_revision"`
+	Explanations      []MemoryRecallExplanation `json:"explanations"`
+	RecalledAt        int64                     `json:"recalled_at"`
 }
 
 type CapsuleUsage struct {

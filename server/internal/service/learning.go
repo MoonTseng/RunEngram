@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"sort"
@@ -29,15 +30,23 @@ type CreateCapsuleInput struct {
 }
 
 type UpdateCapsuleInput struct {
-	MemoryClass  *model.MemoryClass
-	Trigger      *string
-	Title        *string
-	Summary      *string
-	Scope        *string
-	Evidence     *string
-	Labels       *[]string
-	Fingerprints *[]string
-	Status       *model.CapsuleStatus
+	MemoryClass       *model.MemoryClass
+	Trigger           *string
+	Title             *string
+	Summary           *string
+	Scope             *string
+	Evidence          *string
+	Labels            *[]string
+	Fingerprints      *[]string
+	Status            *model.CapsuleStatus
+	ExpectedUpdatedAt *int64
+}
+
+type CreateMemoryRelationInput struct {
+	Type       model.MemoryRelationType
+	TargetKind model.MemoryRelationTargetKind
+	TargetRef  string
+	Note       string
 }
 
 type CapsuleListInput struct {
@@ -438,6 +447,125 @@ func (s *Service) GetCapsule(ctx context.Context, id string) (*model.Exploration
 	return s.st.GetCapsule(ctx, id)
 }
 
+func (s *Service) CreateMemoryRelation(
+	ctx context.Context,
+	sourceCapsuleID string,
+	input CreateMemoryRelationInput,
+) (*model.MemoryRelation, error) {
+	if !input.Type.Valid() {
+		return nil, fmt.Errorf("invalid memory relation type %q", input.Type)
+	}
+	if !input.TargetKind.Valid() {
+		return nil, fmt.Errorf("invalid memory relation target kind %q", input.TargetKind)
+	}
+	input.TargetRef = strings.TrimSpace(input.TargetRef)
+	input.Note = strings.TrimSpace(input.Note)
+	if input.TargetRef == "" {
+		return nil, errors.New("memory relation target cannot be blank")
+	}
+	if input.Type == model.MemoryRelationAppliesTo && input.TargetKind != model.MemoryRelationTargetScope {
+		return nil, errors.New("applies-to relation requires scope target")
+	}
+	if (input.Type == model.MemoryRelationSupersedes || input.Type == model.MemoryRelationConflictsWith) &&
+		input.TargetKind != model.MemoryRelationTargetCapsule {
+		return nil, fmt.Errorf("%s relation requires capsule target", input.Type)
+	}
+
+	source, err := s.st.GetCapsule(ctx, sourceCapsuleID)
+	if err != nil {
+		return nil, err
+	}
+	relations, err := s.st.ListMemoryRelations(ctx, source.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	if input.TargetKind == model.MemoryRelationTargetCapsule {
+		if input.TargetRef == sourceCapsuleID {
+			return nil, errors.New("memory relation cannot target itself")
+		}
+		target, err := s.st.GetCapsule(ctx, input.TargetRef)
+		if err != nil {
+			return nil, err
+		}
+		if target.ProjectID != source.ProjectID {
+			return nil, errors.New("memory relation cannot cross projects")
+		}
+		if input.Type == model.MemoryRelationSupersedes &&
+			hasMemoryRelationPath(relations, input.TargetRef, sourceCapsuleID, model.MemoryRelationSupersedes) {
+			return nil, errors.New("memory relation would create a supersedes cycle")
+		}
+		if input.Type == model.MemoryRelationConflictsWith &&
+			hasDirectMemoryRelation(relations, input.TargetRef, sourceCapsuleID, model.MemoryRelationConflictsWith) {
+			return nil, store.ErrConflict
+		}
+	}
+
+	relation, err := s.st.CreateMemoryRelation(ctx, model.MemoryRelation{
+		ProjectID:       source.ProjectID,
+		SourceCapsuleID: sourceCapsuleID,
+		Type:            input.Type,
+		TargetKind:      input.TargetKind,
+		TargetRef:       input.TargetRef,
+		Note:            input.Note,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if input.Type == model.MemoryRelationSupersedes {
+		stale := model.CapsuleStatusStale
+		if _, err := s.st.UpdateCapsule(ctx, input.TargetRef, store.CapsuleUpdate{Status: &stale}); err != nil {
+			_ = s.st.DeleteMemoryRelation(ctx, relation.ID)
+			return nil, err
+		}
+	}
+	return relation, nil
+}
+
+func (s *Service) DeleteMemoryRelation(ctx context.Context, id string) error {
+	return s.st.DeleteMemoryRelation(ctx, id)
+}
+
+func hasDirectMemoryRelation(
+	relations []model.MemoryRelation,
+	sourceID, targetID string,
+	relationType model.MemoryRelationType,
+) bool {
+	for _, relation := range relations {
+		if relation.SourceCapsuleID == sourceID && relation.TargetKind == model.MemoryRelationTargetCapsule &&
+			relation.TargetRef == targetID && relation.Type == relationType {
+			return true
+		}
+	}
+	return false
+}
+
+func hasMemoryRelationPath(
+	relations []model.MemoryRelation,
+	startID, targetID string,
+	relationType model.MemoryRelationType,
+) bool {
+	visited := map[string]bool{}
+	stack := []string{startID}
+	for len(stack) > 0 {
+		current := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if current == targetID {
+			return true
+		}
+		if visited[current] {
+			continue
+		}
+		visited[current] = true
+		for _, relation := range relations {
+			if relation.SourceCapsuleID == current && relation.TargetKind == model.MemoryRelationTargetCapsule &&
+				relation.Type == relationType {
+				stack = append(stack, relation.TargetRef)
+			}
+		}
+	}
+	return false
+}
+
 func (s *Service) UpdateCapsule(ctx context.Context, id string, input UpdateCapsuleInput) (*model.ExplorationCapsule, error) {
 	if input.Status != nil && !input.Status.Valid() {
 		return nil, fmt.Errorf("invalid capsule status %q", *input.Status)
@@ -460,6 +588,7 @@ func (s *Service) UpdateCapsule(ctx context.Context, id string, input UpdateCaps
 		MemoryClass: input.MemoryClass, Trigger: input.Trigger,
 		Title: input.Title, Summary: input.Summary, Scope: input.Scope, Evidence: input.Evidence,
 		Labels: input.Labels, Fingerprints: input.Fingerprints, Status: input.Status,
+		ExpectedUpdatedAt: input.ExpectedUpdatedAt,
 	})
 }
 
@@ -488,6 +617,7 @@ func (s *Service) GetOrCreateTaskContext(ctx context.Context, taskID string) (*m
 	snapshot := &model.ContextSnapshot{
 		TaskID: task.ID, ProjectID: task.ProjectID, Task: *task,
 		ProjectRules: recall.ProjectRules, SuggestedCapsules: recall.SuggestedCapsules,
+		ContextRevision: recall.ContextRevision, Explanations: recall.Explanations,
 	}
 	return s.st.CreateContextSnapshot(ctx, snapshot)
 }
@@ -584,16 +714,19 @@ func buildMemoryRecall(task model.Task, capsules []model.ExplorationCapsule, que
 	if query != "" {
 		recallTask.Description = strings.TrimSpace(task.Description + "\n" + query)
 	}
+	projectRules := selectProjectRules(capsules, projectRuleBudgetRunes, maxProjectRules)
+	suggestedCapsules := matchCapsules(
+		recallTask,
+		capsules,
+		experienceRecallBudgetRunes,
+		maxRecalledExperiences,
+	)
 	return model.MemoryRecall{
 		TaskID: task.ID, ProjectID: task.ProjectID, Query: query,
-		ProjectRules: selectProjectRules(capsules, projectRuleBudgetRunes, maxProjectRules),
-		SuggestedCapsules: matchCapsules(
-			recallTask,
-			capsules,
-			experienceRecallBudgetRunes,
-			maxRecalledExperiences,
-		),
-		RecalledAt: time.Now().UnixMilli(),
+		ProjectRules: projectRules, SuggestedCapsules: suggestedCapsules,
+		ContextRevision: memoryContextRevision(projectRules, suggestedCapsules),
+		Explanations:    explainMemoryRecall(recallTask, projectRules, suggestedCapsules),
+		RecalledAt:      time.Now().UnixMilli(),
 	}
 }
 
@@ -640,6 +773,13 @@ func matchCapsules(
 			2*overlap(taskAll, tokenSet(capsule.Summary)) +
 			2*overlap(taskAll, tokenSet(capsule.Trigger)) +
 			overlap(taskAll, tokenSet(capsule.Scope))
+		for _, relation := range capsule.Relations {
+			if relation.Direction == model.MemoryRelationOutgoing &&
+				relation.Type == model.MemoryRelationAppliesTo &&
+				overlap(taskAll, tokenSet(relation.TargetRef)) > 0 {
+				relevance += 6
+			}
+		}
 		if relevance > 0 {
 			score := float64(relevance) + 2*capsule.Confidence +
 				0.25*float64(capsule.HelpfulCount) - 0.25*float64(capsule.RejectedCount)
@@ -660,6 +800,108 @@ func matchCapsules(
 		out[i] = ranked[i].capsule
 	}
 	return fitMemoryBudget(out, budgetRunes, maxCount)
+}
+
+func explainMemoryRecall(
+	task model.Task,
+	projectRules, suggested []model.ExplorationCapsule,
+) []model.MemoryRecallExplanation {
+	out := make([]model.MemoryRecallExplanation, 0, len(projectRules)+len(suggested))
+	for _, capsule := range projectRules {
+		explanation := explainCapsuleMatch(task, capsule)
+		explanation.Reasons = append(
+			[]model.MemoryRecallReason{{Code: "project-rule"}},
+			explanation.Reasons...,
+		)
+		out = append(out, explanation)
+	}
+	for _, capsule := range suggested {
+		out = append(out, explainCapsuleMatch(task, capsule))
+	}
+	return out
+}
+
+func explainCapsuleMatch(task model.Task, capsule model.ExplorationCapsule) model.MemoryRecallExplanation {
+	taskTitle := tokenSet(task.Title)
+	taskBody := tokenSet(task.Description)
+	taskLabels := stringSet(task.Labels)
+	taskAll := mergeSets(taskTitle, taskBody, taskLabels)
+	explanation := model.MemoryRecallExplanation{
+		CapsuleID: capsule.ID,
+		Reasons:   []model.MemoryRecallReason{},
+		Warnings:  []string{},
+	}
+	addReason := func(code, value string, weight int) {
+		explanation.Reasons = append(explanation.Reasons, model.MemoryRecallReason{Code: code, Value: value})
+		explanation.Score += float64(weight)
+	}
+	if value := joinedOverlap(taskLabels, stringSet(capsule.Labels)); value != "" {
+		addReason("label-match", value, 5)
+	}
+	if value := joinedOverlap(taskAll, stringSet(capsule.Fingerprints)); value != "" {
+		addReason("fingerprint-match", value, 4)
+	}
+	if value := joinedOverlap(taskTitle, tokenSet(capsule.Title)); value != "" {
+		addReason("title-match", value, 3)
+	}
+	if value := joinedOverlap(taskAll, tokenSet(capsule.Summary)); value != "" {
+		addReason("summary-match", value, 2)
+	}
+	if value := joinedOverlap(taskAll, tokenSet(capsule.Trigger)); value != "" {
+		addReason("trigger-match", value, 2)
+	}
+	if value := joinedOverlap(taskAll, tokenSet(capsule.Scope)); value != "" {
+		addReason("scope-match", value, 1)
+	}
+	for _, relation := range capsule.Relations {
+		switch relation.Type {
+		case model.MemoryRelationAppliesTo:
+			if relation.Direction == model.MemoryRelationOutgoing &&
+				overlap(taskAll, tokenSet(relation.TargetRef)) > 0 {
+				addReason("applies-to", relation.TargetRef, 6)
+			}
+		case model.MemoryRelationValidatedBy:
+			if relation.Direction == model.MemoryRelationOutgoing {
+				explanation.Reasons = append(explanation.Reasons, model.MemoryRecallReason{
+					Code: "validated-by", Value: relation.TargetRef,
+				})
+			}
+		case model.MemoryRelationConflictsWith:
+			conflictID := relation.TargetRef
+			if relation.Direction == model.MemoryRelationIncoming {
+				conflictID = relation.SourceCapsuleID
+			}
+			explanation.Warnings = append(explanation.Warnings, "conflicts-with:"+conflictID)
+		}
+	}
+	explanation.Score += 2*capsule.Confidence +
+		0.25*float64(capsule.HelpfulCount) - 0.25*float64(capsule.RejectedCount)
+	return explanation
+}
+
+func joinedOverlap(left, right map[string]struct{}) string {
+	values := make([]string, 0)
+	for value := range left {
+		if _, ok := right[value]; ok {
+			values = append(values, value)
+		}
+	}
+	sort.Strings(values)
+	return strings.Join(values, ",")
+}
+
+func memoryContextRevision(groups ...[]model.ExplorationCapsule) string {
+	parts := make([]string, 0)
+	for _, capsules := range groups {
+		for _, capsule := range capsules {
+			parts = append(parts, fmt.Sprintf("%s:%d", capsule.ID, capsule.UpdatedAt))
+			for _, relation := range capsule.Relations {
+				parts = append(parts, relation.ID)
+			}
+		}
+	}
+	sum := sha256.Sum256([]byte(strings.Join(parts, "|")))
+	return fmt.Sprintf("%x", sum[:8])
 }
 
 func fitMemoryBudget(capsules []model.ExplorationCapsule, budgetRunes, maxCount int) []model.ExplorationCapsule {

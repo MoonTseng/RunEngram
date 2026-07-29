@@ -97,6 +97,15 @@ export interface TaskEvent {
 export type CapsuleStatus = "active" | "stale" | "archived";
 export type MemoryClass = "experience" | "project-rule";
 export type MemoryValidation = "verified" | "trusted" | "disputed" | "stale";
+export type MemoryRelationType =
+  | "derived-from"
+  | "validated-by"
+  | "applies-to"
+  | "supersedes"
+  | "conflicts-with"
+  | "caused-by";
+export type MemoryRelationTargetKind = "capsule" | "task" | "artifact" | "scope";
+export type MemoryRelationDirection = "outgoing" | "incoming";
 
 export type LearningNoteKind = "human-correction" | "agent-recovery";
 export type LearningNoteStatus = "pending" | "promoted" | "rejected";
@@ -146,8 +155,33 @@ export interface ExplorationCapsule {
   use_count: number;
   helpful_count: number;
   rejected_count: number;
+  relations: MemoryRelation[];
   created_at: number;
   updated_at: number;
+}
+
+export interface MemoryRelation {
+  id: string;
+  project_id: string;
+  source_capsule_id: string;
+  type: MemoryRelationType;
+  target_kind: MemoryRelationTargetKind;
+  target_ref: string;
+  note: string;
+  direction: MemoryRelationDirection;
+  created_at: number;
+}
+
+export interface MemoryRecallReason {
+  code: string;
+  value?: string;
+}
+
+export interface MemoryRecallExplanation {
+  capsule_id: string;
+  score: number;
+  reasons: MemoryRecallReason[];
+  warnings: string[];
 }
 
 export interface ContextSnapshot {
@@ -157,7 +191,29 @@ export interface ContextSnapshot {
   task: Task;
   project_rules: ExplorationCapsule[];
   suggested_capsules: ExplorationCapsule[];
+  context_revision: string;
+  explanations: MemoryRecallExplanation[];
   created_at: number;
+}
+
+export interface UpdateCapsuleInput {
+  memory_class?: MemoryClass;
+  trigger?: string;
+  title?: string;
+  summary?: string;
+  scope?: string;
+  evidence?: string;
+  labels?: string[];
+  fingerprints?: string[];
+  status?: CapsuleStatus;
+  expected_updated_at: number;
+}
+
+export interface CreateMemoryRelationInput {
+  type: MemoryRelationType;
+  target_kind: MemoryRelationTargetKind;
+  target_ref: string;
+  note?: string;
 }
 
 export interface AgentRun {
@@ -398,6 +454,35 @@ export async function listCapsules(
     `/api/v1/projects/${encodeURIComponent(projectIdOrName)}/capsules${suffix}`
   );
   return response.capsules ?? [];
+}
+
+export async function updateCapsule(
+  capsuleId: string,
+  input: UpdateCapsuleInput
+): Promise<ExplorationCapsule> {
+  return request<ExplorationCapsule>(
+    "PATCH",
+    `/api/v1/capsules/${encodeURIComponent(capsuleId)}`,
+    input
+  );
+}
+
+export async function createMemoryRelation(
+  capsuleId: string,
+  input: CreateMemoryRelationInput
+): Promise<MemoryRelation> {
+  return request<MemoryRelation>(
+    "POST",
+    `/api/v1/capsules/${encodeURIComponent(capsuleId)}/relations`,
+    input
+  );
+}
+
+export async function deleteMemoryRelation(relationId: string): Promise<void> {
+  await request(
+    "DELETE",
+    `/api/v1/memory-relations/${encodeURIComponent(relationId)}`
+  );
 }
 
 export async function getLearningMetrics(

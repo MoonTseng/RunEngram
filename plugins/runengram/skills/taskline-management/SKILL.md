@@ -155,7 +155,11 @@ higher-priority task may be selected. Immediately read
 `run.id`. If another supported Agent executes the task, use
 `--agent-tool claude-code`, `pi`, or `other`. A blocked active run resumes with
 the same ID and returns `"resumed": true`; read
-`taskline task resume <id> --format json` before continuing. `run` stops after that created task completes or
+`taskline task resume <id> --format json`, then refresh active memory with
+`taskline task recall <id> --query "<current phase and concrete observation>" --format json`
+before continuing. Treat `context_revision` as the identity of the current
+Context Pack. Inspect every explanation's reason codes and warnings; never
+apply a `conflicts-with` memory silently. `run` stops after that created task completes or
 hits a real blocker; it does not drain unrelated queued work. `spec` attaches
 the `Spec` task document and stops before any source-code modification.
 
@@ -457,6 +461,19 @@ taskline capsule use <capsule-id> --task <id> --outcome helpful \
 taskline capsule archive <capsule-id>
 taskline capsule metrics --project demo
 
+# Typed memory graph: provenance, applicability, conflicts, and replacement
+taskline capsule relate <capsule-id> \
+  --type validated-by --target-kind artifact --target <test-report-doc-id> \
+  --note "Focused and full verification passed"
+taskline capsule relate <capsule-id> \
+  --type applies-to --target-kind scope --target "webview-url-service"
+taskline capsule relate <new-capsule-id> \
+  --type supersedes --target-kind capsule --target <old-capsule-id> \
+  --note "New evidence invalidated the old command"
+taskline capsule edit <capsule-id> --expected-updated-at <updated-at-ms> \
+  --summary "<corrected guidance>" --scope "<corrected applicability>"
+taskline capsule unrelate <relation-id>
+
 # Correct a pending learning candidate before it enters future context
 taskline learning edit <note-id> \
   --trigger "Creating a feature branch for release 7.23.0" \
@@ -648,8 +665,12 @@ taskline learning edit <note-id> \
   --scope "<correct applicability>"
 ```
 
-Only pending notes are editable. Never silently rewrite promoted memory.
-Archive the promoted capsule and capture a corrected candidate instead.
+`learning edit` changes pending notes only. Project Knowledge or
+`taskline capsule edit` may correct promoted Capsules with optimistic
+concurrency: a stale browser or Agent receives a conflict instead of silently
+overwriting newer content. Material semantic corrections should preserve
+history: create a corrected Capsule, connect it to the old Capsule with
+`supersedes`, and let RunEngram mark the old Capsule stale.
 
 Promote only after commands, tests, artifacts, or merged changes verify the
 guidance:
@@ -692,6 +713,19 @@ it `disputed` and exclude it from automatic recall. Report the observed
 outcome, not a desired score. A `trusted` label means repeated evidence, not
 universal truth.
 
+Use typed relations sparingly:
+
+- `validated-by` links a Capsule to real task, artifact, or Capsule evidence;
+- `applies-to` links it to one concrete module, platform, version, or task scope;
+- `supersedes` goes from new Capsule to old Capsule and immediately removes the
+  old Capsule from automatic recall;
+- `conflicts-with` records unresolved incompatible guidance and requires human
+  or current-code resolution before use;
+- `caused-by` and `derived-from` preserve root cause and provenance.
+
+Relations do not replace evidence text. They make evidence navigable and let
+the Agent explain why memory entered a Context Pack.
+
 ## Stage playbook — "work the queue"
 
 When the user says "work the queue" / "do the next task" / "keep
@@ -716,11 +750,17 @@ more instructions:
    one immutable task-start snapshot. Apply every active `project_rules` entry
    unless current code disproves it. Read each relevant
    `suggested_capsules` entry's `scope`, `evidence`, `validation`, and
-   `confidence` before using it. Recall uses a rune budget and relevance rank,
+   `confidence` before using it. Also record `context_revision`; inspect
+   `explanations` to understand label, fingerprint, trigger, scope, and
+   `applies-to` matches. A warning is a decision point, not optional prose.
+   Recall uses a rune budget and relevance rank,
    not a fixed five-item limit. When execution later reveals a new module,
    error, command, or tool that the initial task text did not contain, run
    `taskline task recall <id> --query "<new concrete context>" --format json`
-   before improvising. Dynamic recall does not mutate the immutable task-start
+   before improvising. Run dynamic recall again after session restoration,
+   context compaction, or a stage boundary that introduces different code,
+   tools, or failure signatures. Compare `context_revision` to detect a changed
+   Context Pack. Dynamic recall does not mutate the immutable task-start
    snapshot. Do not substitute recalled knowledge for current code
    verification. Apply the Work Graph selection rules above.
    Start with `--workflow engineering-flow`, or a project Workflow Adapter,

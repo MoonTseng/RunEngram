@@ -1154,8 +1154,9 @@ func TestExplorationCapsuleLearningLoopAtAPI(t *testing.T) {
 	require.Equal(t, http.StatusOK, st)
 
 	var capsule struct {
-		ID       string `json:"id"`
-		Producer string `json:"producer"`
+		ID        string `json:"id"`
+		Producer  string `json:"producer"`
+		UpdatedAt int64  `json:"updated_at"`
 	}
 	st = jsonReq(t, "POST", base+"/api/v1/projects/learning-api/capsules",
 		map[string]any{
@@ -1172,16 +1173,45 @@ func TestExplorationCapsuleLearningLoopAtAPI(t *testing.T) {
 	require.NotEmpty(t, capsule.ID)
 	require.Equal(t, "claude-code", capsule.Producer)
 
+	var relation model.MemoryRelation
+	st = jsonReq(t, http.MethodPost, base+"/api/v1/capsules/"+capsule.ID+"/relations",
+		map[string]any{
+			"type": "applies-to", "target_kind": "scope", "target_ref": "webview",
+			"note": "Only applies to WebView migration tasks",
+		}, &relation)
+	require.Equal(t, http.StatusCreated, st)
+	require.Equal(t, capsule.ID, relation.SourceCapsuleID)
+
+	var updatedCapsule model.ExplorationCapsule
+	st = jsonReq(t, http.MethodPatch, base+"/api/v1/capsules/"+capsule.ID,
+		map[string]any{
+			"title":               "WebView migration compatibility boundary",
+			"expected_updated_at": capsule.UpdatedAt,
+		}, &updatedCapsule)
+	require.Equal(t, http.StatusOK, st)
+	require.Greater(t, updatedCapsule.UpdatedAt, capsule.UpdatedAt)
+	st = jsonReq(t, http.MethodPatch, base+"/api/v1/capsules/"+capsule.ID,
+		map[string]any{
+			"title":               "Stale browser overwrite",
+			"expected_updated_at": capsule.UpdatedAt,
+		}, nil)
+	require.Equal(t, http.StatusConflict, st)
+
 	var first, second struct {
 		ID                string `json:"id"`
+		ContextRevision   string `json:"context_revision"`
 		SuggestedCapsules []struct {
 			ID string `json:"id"`
 		} `json:"suggested_capsules"`
+		Explanations []model.MemoryRecallExplanation `json:"explanations"`
 	}
 	st = jsonReq(t, "GET", base+"/api/v1/tasks/"+created.ID+"/context", nil, &first)
 	require.Equal(t, http.StatusOK, st)
 	require.Len(t, first.SuggestedCapsules, 1)
 	require.Equal(t, capsule.ID, first.SuggestedCapsules[0].ID)
+	require.NotEmpty(t, first.ContextRevision)
+	require.Len(t, first.Explanations, 1)
+	require.Equal(t, capsule.ID, first.Explanations[0].CapsuleID)
 	st = jsonReq(t, "GET", base+"/api/v1/tasks/"+created.ID+"/context", nil, &second)
 	require.Equal(t, http.StatusOK, st)
 	require.Equal(t, first.ID, second.ID)
@@ -1199,6 +1229,9 @@ func TestExplorationCapsuleLearningLoopAtAPI(t *testing.T) {
 	require.Equal(t, 1, metrics.ReusedTaskCount)
 	require.Equal(t, 1, metrics.HelpfulCount)
 	require.Equal(t, 1.0, metrics.HelpfulRate)
+
+	st = jsonReq(t, http.MethodDelete, base+"/api/v1/memory-relations/"+relation.ID, nil, nil)
+	require.Equal(t, http.StatusNoContent, st)
 }
 
 func TestAgentRunResumeLoopAtAPI(t *testing.T) {

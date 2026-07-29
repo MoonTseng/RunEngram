@@ -436,3 +436,146 @@ func TestReviewerCanPromoteExpiredCandidateAsProjectRule(t *testing.T) {
 	require.Equal(t, model.MemoryClassProjectRule, capsule.MemoryClass)
 	require.Equal(t, note.Trigger, capsule.Trigger)
 }
+
+func TestMemoryRelationsSupersedeOldKnowledgeAndExplainRecall(t *testing.T) {
+	ctx := context.Background()
+	svc := newSvc(t)
+	project, err := svc.CreateProject(ctx, "memory-graph", "")
+	require.NoError(t, err)
+
+	oldCapsule, err := svc.CreateCapsule(ctx, service.CreateCapsuleInput{
+		ProjectID: project.ID, Title: "Gradle module verification",
+		Trigger: "multi module build", Summary: "Compile every module in parallel",
+		Scope: "Android modules", Evidence: "Legacy task output",
+		MemoryClass: model.MemoryClassExperience,
+	})
+	require.NoError(t, err)
+	newCapsule, err := svc.CreateCapsule(ctx, service.CreateCapsuleInput{
+		ProjectID: project.ID, Title: "Gradle module verification",
+		Trigger: "multi module build", Summary: "Compile modules serially with parallelism disabled",
+		Scope: "Android modules", Evidence: "Verified on three modules",
+		MemoryClass: model.MemoryClassExperience,
+	})
+	require.NoError(t, err)
+
+	relation, err := svc.CreateMemoryRelation(ctx, newCapsule.ID, service.CreateMemoryRelationInput{
+		Type:       model.MemoryRelationSupersedes,
+		TargetKind: model.MemoryRelationTargetCapsule,
+		TargetRef:  oldCapsule.ID,
+		Note:       "Parallel compilation proved flaky",
+	})
+	require.NoError(t, err)
+	require.Equal(t, newCapsule.ID, relation.SourceCapsuleID)
+
+	oldCapsule, err = svc.GetCapsule(ctx, oldCapsule.ID)
+	require.NoError(t, err)
+	require.Equal(t, model.CapsuleStatusStale, oldCapsule.Status)
+	require.Len(t, oldCapsule.Relations, 1)
+	require.Equal(t, model.MemoryRelationIncoming, oldCapsule.Relations[0].Direction)
+
+	_, err = svc.CreateMemoryRelation(ctx, newCapsule.ID, service.CreateMemoryRelationInput{
+		Type:       model.MemoryRelationAppliesTo,
+		TargetKind: model.MemoryRelationTargetScope,
+		TargetRef:  "billing-module",
+		Note:       "Validated module boundary",
+	})
+	require.NoError(t, err)
+	conflictingCapsule, err := svc.CreateCapsule(ctx, service.CreateCapsuleInput{
+		ProjectID: project.ID, Title: "Legacy release naming",
+		Trigger: "release branch", Summary: "Use a legacy release branch prefix",
+		Scope: "iOS release", Evidence: "Old release notes",
+		MemoryClass: model.MemoryClassExperience,
+	})
+	require.NoError(t, err)
+	_, err = svc.CreateMemoryRelation(ctx, conflictingCapsule.ID, service.CreateMemoryRelationInput{
+		Type:       model.MemoryRelationConflictsWith,
+		TargetKind: model.MemoryRelationTargetCapsule,
+		TargetRef:  newCapsule.ID,
+		Note:       "Needs project-owner resolution",
+	})
+	require.NoError(t, err)
+
+	task, err := svc.CreateTask(ctx, project.ID, "Repair billing build", "Gradle multi module compilation failed", model.TaskTypeBug, 1, true, nil)
+	require.NoError(t, err)
+	_, err = svc.ClaimTask(ctx, task.ID, service.ClaimOptions{Owner: "codex"})
+	require.NoError(t, err)
+
+	recall, err := svc.RecallTaskMemory(ctx, task.ID, "codex", "billing-module Gradle verification")
+	require.NoError(t, err)
+	require.NotEmpty(t, recall.ContextRevision)
+	require.Len(t, recall.SuggestedCapsules, 1)
+	require.Equal(t, newCapsule.ID, recall.SuggestedCapsules[0].ID)
+	require.Len(t, recall.Explanations, 1)
+	require.Equal(t, newCapsule.ID, recall.Explanations[0].CapsuleID)
+	require.NotEmpty(t, recall.Explanations[0].Reasons)
+	require.Contains(t, recall.Explanations[0].Reasons, model.MemoryRecallReason{
+		Code: "applies-to", Value: "billing-module",
+	})
+	require.Contains(t, recall.Explanations[0].Warnings, "conflicts-with:"+conflictingCapsule.ID)
+}
+
+func TestMemoryRelationRejectsInvalidGraphEdges(t *testing.T) {
+	ctx := context.Background()
+	svc := newSvc(t)
+	project, err := svc.CreateProject(ctx, "memory-graph-guards", "")
+	require.NoError(t, err)
+	otherProject, err := svc.CreateProject(ctx, "memory-graph-other", "")
+	require.NoError(t, err)
+
+	first, err := svc.CreateCapsule(ctx, service.CreateCapsuleInput{
+		ProjectID: project.ID, Title: "First", Summary: "First rule", Evidence: "verified",
+	})
+	require.NoError(t, err)
+	second, err := svc.CreateCapsule(ctx, service.CreateCapsuleInput{
+		ProjectID: project.ID, Title: "Second", Summary: "Second rule", Evidence: "verified",
+	})
+	require.NoError(t, err)
+	foreign, err := svc.CreateCapsule(ctx, service.CreateCapsuleInput{
+		ProjectID: otherProject.ID, Title: "Foreign", Summary: "Foreign rule", Evidence: "verified",
+	})
+	require.NoError(t, err)
+
+	_, err = svc.CreateMemoryRelation(ctx, first.ID, service.CreateMemoryRelationInput{
+		Type: model.MemoryRelationConflictsWith, TargetKind: model.MemoryRelationTargetCapsule, TargetRef: first.ID,
+	})
+	require.Error(t, err)
+
+	_, err = svc.CreateMemoryRelation(ctx, first.ID, service.CreateMemoryRelationInput{
+		Type: model.MemoryRelationSupersedes, TargetKind: model.MemoryRelationTargetCapsule, TargetRef: foreign.ID,
+	})
+	require.Error(t, err)
+
+	_, err = svc.CreateMemoryRelation(ctx, first.ID, service.CreateMemoryRelationInput{
+		Type: model.MemoryRelationSupersedes, TargetKind: model.MemoryRelationTargetCapsule, TargetRef: second.ID,
+	})
+	require.NoError(t, err)
+	_, err = svc.CreateMemoryRelation(ctx, second.ID, service.CreateMemoryRelationInput{
+		Type: model.MemoryRelationSupersedes, TargetKind: model.MemoryRelationTargetCapsule, TargetRef: first.ID,
+	})
+	require.Error(t, err)
+}
+
+func TestCapsuleUpdateUsesOptimisticConcurrency(t *testing.T) {
+	ctx := context.Background()
+	svc := newSvc(t)
+	project, err := svc.CreateProject(ctx, "memory-cas", "")
+	require.NoError(t, err)
+	capsule, err := svc.CreateCapsule(ctx, service.CreateCapsuleInput{
+		ProjectID: project.ID, Title: "Original", Summary: "Original summary", Evidence: "verified",
+	})
+	require.NoError(t, err)
+
+	firstVersion := capsule.UpdatedAt
+	title := "Corrected"
+	capsule, err = svc.UpdateCapsule(ctx, capsule.ID, service.UpdateCapsuleInput{
+		Title: &title, ExpectedUpdatedAt: &firstVersion,
+	})
+	require.NoError(t, err)
+	require.Equal(t, title, capsule.Title)
+
+	staleTitle := "Stale overwrite"
+	_, err = svc.UpdateCapsule(ctx, capsule.ID, service.UpdateCapsuleInput{
+		Title: &staleTitle, ExpectedUpdatedAt: &firstVersion,
+	})
+	require.ErrorIs(t, err, store.ErrConflict)
+}

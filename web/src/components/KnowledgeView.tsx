@@ -55,7 +55,10 @@ export function KnowledgeView({ project }: { project: Project }) {
 
   useEffect(() => {
     setSelected((current) => {
-      if (current && ordered.some((capsule) => capsule.id === current.id)) return current;
+      if (current) {
+        const refreshed = ordered.find((capsule) => capsule.id === current.id);
+        if (refreshed) return refreshed;
+      }
       return ordered[0] ?? null;
     });
   }, [ordered]);
@@ -146,7 +149,17 @@ export function KnowledgeView({ project }: { project: Project }) {
             ) : (
               <div className="grid items-start gap-5 lg:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.25fr)]">
                 <MemoryList capsules={ordered} selectedID={selected?.id ?? null} onSelect={setSelected} />
-                <MemoryDetail capsule={selected} />
+                <MemoryDetail
+                  capsule={selected}
+                  capsules={ordered}
+                  onUpdated={async (updated) => {
+                    setSelected(updated);
+                    await Promise.all([capsules.refetch(), metrics.refetch()]);
+                  }}
+                  onRelationsChanged={async () => {
+                    await Promise.all([capsules.refetch(), metrics.refetch()]);
+                  }}
+                />
               </div>
             )}
           </>

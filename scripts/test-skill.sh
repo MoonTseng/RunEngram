@@ -40,6 +40,8 @@ required_sections = {
         "taskline task recall <id>",
         "taskline capsule create",
         "taskline capsule use",
+        "taskline capsule edit",
+        "taskline capsule relate",
         "--memory-class project-rule",
         "Promoted memory begins `verified`",
         "--producer claude-code",

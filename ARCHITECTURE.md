@@ -352,6 +352,42 @@ paths become candidates. Routine reads, successful commands, temporary paths,
 task-only wording, secrets, raw transcripts, hidden reasoning, and guesses do
 not become project memory.
 
+### Typed Memory Graph
+
+Exploration Capsules remain the recall unit. `memory_relations` adds a small
+typed adjacency layer instead of introducing a graph database:
+
+- `derived-from` connects a memory to a task or artifact;
+- `validated-by` connects supporting evidence;
+- `applies-to` gives an explicit module, platform, version, or scenario scope;
+- `supersedes` replaces a capsule while preserving history and marking the old
+  capsule stale;
+- `conflicts-with` keeps competing conclusions visible;
+- `caused-by` captures a reusable causal dependency.
+
+The service validates relation and target kinds, rejects self edges, keeps
+capsule targets inside one project, prevents supersession cycles, and treats
+reverse duplicate conflicts as conflicts. Reads attach inbound and outbound
+edges to each capsule.
+
+Recall stays deterministic and budgeted. Explicit `applies-to` overlap adds a
+ranking signal. The result includes:
+
+- `context_revision`, a stable digest of selected capsule versions and
+  relation IDs;
+- one explanation per selected capsule with score and structured reason codes;
+- warnings for active `conflicts-with` edges.
+
+This preserves the immutable task-start snapshot while making later dynamic
+recall auditable. Agents refresh recall after a material context change rather
+than assuming one initial top-k list represents all project knowledge.
+
+Promoted capsule edits accept `expected_updated_at`. The store performs the
+update as compare-and-swap and returns `ErrConflict` when another reviewer
+already changed the row. Material corrections should create a new capsule and
+link it with `supersedes`; in-place edits remain available for wording and
+metadata fixes.
+
 ## Project deletion
 
 `DELETE /api/v1/projects/:project` resolves ID or name, snapshots task

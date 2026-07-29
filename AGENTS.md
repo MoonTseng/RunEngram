@@ -24,6 +24,8 @@ see `PRODUCT.md`.
 - `scripts/install-local.sh` — user-local CLI install plus public skill
   symlink refresh.
 - `scripts/test-skill.sh` — smoke tests for public and internal skill docs.
+- `scripts/test-start-local-env.sh` — verifies `.env` is loaded before local
+  listen and storage settings are resolved.
 
 ## Build, run, test
 

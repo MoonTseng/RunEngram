@@ -16,7 +16,16 @@ import (
 
 func init() {
 	rootCmd.AddCommand(capsuleCmd)
-	capsuleCmd.AddCommand(capsuleListCmd, capsuleCreateCmd, capsuleUseCmd, capsuleArchiveCmd, capsuleMetricsCmd)
+	capsuleCmd.AddCommand(
+		capsuleListCmd,
+		capsuleCreateCmd,
+		capsuleEditCmd,
+		capsuleUseCmd,
+		capsuleArchiveCmd,
+		capsuleMetricsCmd,
+		capsuleRelateCmd,
+		capsuleUnrelateCmd,
+	)
 	taskCmd.AddCommand(taskContextCmd, taskRecallCmd)
 
 	for _, command := range []*cobra.Command{capsuleListCmd, capsuleCreateCmd, capsuleMetricsCmd} {
@@ -39,6 +48,14 @@ func init() {
 	_ = capsuleCreateCmd.MarkFlagRequired("summary")
 	_ = capsuleCreateCmd.MarkFlagRequired("evidence-file")
 
+	capsuleEditCmd.Flags().String("title", "", "corrected memory title")
+	capsuleEditCmd.Flags().String("summary", "", "corrected reusable finding")
+	capsuleEditCmd.Flags().String("trigger", "", "corrected recall trigger")
+	capsuleEditCmd.Flags().String("scope", "", "corrected applicability")
+	capsuleEditCmd.Flags().String("evidence-file", "", "replacement markdown evidence file")
+	capsuleEditCmd.Flags().Int64("expected-updated-at", 0, "last observed updated_at value (required)")
+	_ = capsuleEditCmd.MarkFlagRequired("expected-updated-at")
+
 	taskRecallCmd.Flags().String("query", "", "current action, error, or phase (required)")
 	_ = taskRecallCmd.MarkFlagRequired("query")
 
@@ -46,6 +63,13 @@ func init() {
 	capsuleUseCmd.Flags().String("outcome", "helpful", "used|helpful|rejected|stale")
 	capsuleUseCmd.Flags().String("notes", "", "short outcome note")
 	_ = capsuleUseCmd.MarkFlagRequired("task")
+
+	capsuleRelateCmd.Flags().String("type", "", "derived-from|validated-by|applies-to|supersedes|conflicts-with|caused-by")
+	capsuleRelateCmd.Flags().String("target-kind", "capsule", "capsule|task|artifact|scope")
+	capsuleRelateCmd.Flags().String("target", "", "target capsule, task, artifact, or scope")
+	capsuleRelateCmd.Flags().String("note", "", "why this relation exists")
+	_ = capsuleRelateCmd.MarkFlagRequired("type")
+	_ = capsuleRelateCmd.MarkFlagRequired("target")
 }
 
 var capsuleCmd = &cobra.Command{
@@ -63,18 +87,27 @@ var taskContextCmd = &cobra.Command{
 			return err
 		}
 		return output.Render(os.Stdout, output.Resolve(formatFlag), snapshot, func(w io.Writer) {
-			fmt.Fprintf(w, "Task: %s\nSnapshot: %s\nProject rules: %d\nRelevant experiences: %d\n",
-				snapshot.Task.Title, snapshot.ID, len(snapshot.ProjectRules), len(snapshot.SuggestedCapsules))
+			fmt.Fprintf(
+				w,
+				"Task: %s\nSnapshot: %s\nContext revision: %s\nProject rules: %d\nRelevant experiences: %d\n",
+				snapshot.Task.Title,
+				snapshot.ID,
+				snapshot.ContextRevision,
+				len(snapshot.ProjectRules),
+				len(snapshot.SuggestedCapsules),
+			)
 			renderCapsuleTable(w, snapshot.ProjectRules)
 			renderCapsuleTable(w, snapshot.SuggestedCapsules)
+			renderMemoryExplanations(w, snapshot.Explanations)
 		})
 	},
 }
 
 var taskRecallCmd = &cobra.Command{
-	Use:   "recall <task-id>",
-	Short: "Recall verified memory for the current action, error, or phase",
-	Args:  cobra.ExactArgs(1),
+	Use:     "recall <task-id>",
+	Aliases: []string{"prime"},
+	Short:   "Recall verified memory for the current action, error, or phase",
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if _, err := requireIdentity(); err != nil {
 			return err
@@ -85,10 +118,17 @@ var taskRecallCmd = &cobra.Command{
 			return err
 		}
 		return output.Render(os.Stdout, output.Resolve(formatFlag), recall, func(w io.Writer) {
-			fmt.Fprintf(w, "Query: %s\nProject rules: %d\nRelevant experiences: %d\n",
-				recall.Query, len(recall.ProjectRules), len(recall.SuggestedCapsules))
+			fmt.Fprintf(
+				w,
+				"Query: %s\nContext revision: %s\nProject rules: %d\nRelevant experiences: %d\n",
+				recall.Query,
+				recall.ContextRevision,
+				len(recall.ProjectRules),
+				len(recall.SuggestedCapsules),
+			)
 			renderCapsuleTable(w, recall.ProjectRules)
 			renderCapsuleTable(w, recall.SuggestedCapsules)
+			renderMemoryExplanations(w, recall.Explanations)
 		})
 	},
 }
@@ -153,6 +193,48 @@ var capsuleCreateCmd = &cobra.Command{
 	},
 }
 
+var capsuleEditCmd = &cobra.Command{
+	Use:   "edit <capsule-id>",
+	Short: "Correct promoted memory without overwriting a concurrent review",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		expectedUpdatedAt, _ := cmd.Flags().GetInt64("expected-updated-at")
+		input := client.UpdateCapsuleInput{ExpectedUpdatedAt: expectedUpdatedAt}
+		changed := false
+		for name, target := range map[string]**string{
+			"title": &input.Title, "summary": &input.Summary,
+			"trigger": &input.Trigger, "scope": &input.Scope,
+		} {
+			if !cmd.Flags().Changed(name) {
+				continue
+			}
+			value, _ := cmd.Flags().GetString(name)
+			*target = &value
+			changed = true
+		}
+		if cmd.Flags().Changed("evidence-file") {
+			evidencePath, _ := cmd.Flags().GetString("evidence-file")
+			evidence, err := os.ReadFile(evidencePath)
+			if err != nil {
+				return fmt.Errorf("read evidence file: %w", err)
+			}
+			value := string(evidence)
+			input.Evidence = &value
+			changed = true
+		}
+		if !changed {
+			return errors.New("set at least one corrected memory field")
+		}
+		capsule, err := newClient().UpdateCapsule(args[0], input)
+		if err != nil {
+			return err
+		}
+		return output.Render(os.Stdout, output.Resolve(formatFlag), capsule, func(w io.Writer) {
+			renderCapsuleTable(w, []client.ExplorationCapsule{*capsule})
+		})
+	},
+}
+
 var capsuleUseCmd = &cobra.Command{
 	Use:   "use <capsule-id>",
 	Short: "Record whether recalled knowledge helped a task",
@@ -183,6 +265,53 @@ var capsuleArchiveCmd = &cobra.Command{
 		return output.Render(os.Stdout, output.Resolve(formatFlag), capsule, func(w io.Writer) {
 			renderCapsuleTable(w, []client.ExplorationCapsule{*capsule})
 		})
+	},
+}
+
+var capsuleRelateCmd = &cobra.Command{
+	Use:   "relate <capsule-id>",
+	Short: "Connect memory to evidence, scope, or other memory",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		relationType, _ := cmd.Flags().GetString("type")
+		targetKind, _ := cmd.Flags().GetString("target-kind")
+		target, _ := cmd.Flags().GetString("target")
+		note, _ := cmd.Flags().GetString("note")
+		relation, err := newClient().CreateMemoryRelation(args[0], client.CreateMemoryRelationInput{
+			Type: relationType, TargetKind: targetKind, TargetRef: target, Note: note,
+		})
+		if err != nil {
+			return err
+		}
+		return output.Render(os.Stdout, output.Resolve(formatFlag), relation, func(w io.Writer) {
+			fmt.Fprintf(
+				w,
+				"%s --%s--> %s:%s\n",
+				shortID(relation.SourceCapsuleID),
+				relation.Type,
+				relation.TargetKind,
+				relation.TargetRef,
+			)
+		})
+	},
+}
+
+var capsuleUnrelateCmd = &cobra.Command{
+	Use:   "unrelate <relation-id>",
+	Short: "Remove a memory relation without deleting either memory",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(_ *cobra.Command, args []string) error {
+		if err := newClient().DeleteMemoryRelation(args[0]); err != nil {
+			return err
+		}
+		return output.Render(
+			os.Stdout,
+			output.Resolve(formatFlag),
+			map[string]any{"deleted": true, "relation_id": args[0]},
+			func(w io.Writer) {
+				fmt.Fprintf(w, "Deleted relation %s\n", args[0])
+			},
+		)
 	},
 }
 
@@ -219,6 +348,34 @@ func renderCapsuleTable(w io.Writer, capsules []client.ExplorationCapsule) {
 			trimRune(capsule.Title, 32), trimRune(strings.ReplaceAll(capsule.Summary, "\n", " "), 56))
 	}
 	_ = tw.Flush()
+}
+
+func renderMemoryExplanations(w io.Writer, explanations []client.MemoryRecallExplanation) {
+	if len(explanations) == 0 {
+		return
+	}
+	fmt.Fprintln(w, "Why recalled:")
+	for _, explanation := range explanations {
+		reasons := make([]string, 0, len(explanation.Reasons))
+		for _, reason := range explanation.Reasons {
+			value := reason.Code
+			if reason.Value != "" {
+				value += "=" + reason.Value
+			}
+			reasons = append(reasons, value)
+		}
+		fmt.Fprintf(
+			w,
+			"- %s score=%.2f reasons=[%s]",
+			shortID(explanation.CapsuleID),
+			explanation.Score,
+			strings.Join(reasons, ", "),
+		)
+		if len(explanation.Warnings) > 0 {
+			fmt.Fprintf(w, " warnings=[%s]", strings.Join(explanation.Warnings, ", "))
+		}
+		fmt.Fprintln(w)
+	}
 }
 
 func capsuleProject(cmd *cobra.Command) (string, error) {
