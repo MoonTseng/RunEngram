@@ -11,8 +11,9 @@ import (
 )
 
 type startRunReq struct {
-	AgentTool        string `json:"agent_tool"`
-	WorkflowTemplate string `json:"workflow_template"`
+	AgentTool          string                    `json:"agent_tool"`
+	WorkflowTemplate   string                    `json:"workflow_template"`
+	WorkflowDefinition *model.WorkflowDefinition `json:"workflow_definition"`
 }
 
 type saveRunCheckpointReq struct {
@@ -45,8 +46,9 @@ func (h *Handler) startOrResumeRun(ctx context.Context, c *app.RequestContext) {
 	}
 	run, resumed, err := h.svc.StartOrResumeRun(ctx, service.StartRunInput{
 		TaskID: c.Param("id"), AgentName: agent.Name,
-		AgentTool:        model.AgentTool(req.AgentTool),
-		WorkflowTemplate: model.WorkflowTemplate(req.WorkflowTemplate),
+		AgentTool:          model.AgentTool(req.AgentTool),
+		WorkflowTemplate:   model.WorkflowTemplate(req.WorkflowTemplate),
+		WorkflowDefinition: req.WorkflowDefinition,
 	})
 	if err != nil {
 		writeServiceError(c, err)

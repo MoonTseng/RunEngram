@@ -97,7 +97,7 @@ learning_notes
 agent_runs  (id, task_id → tasks.id, project_id → projects.id,
              agent_name,
              agent_tool ∈ {codex,claude-code,pi,other},
-             workflow_template ∈ {single-loop,cs-one-flow},
+             workflow_key (single-loop, engineering-flow, or adapter slug),
              workflow_version,
              status ∈ {running,blocked,completed,failed},
              summary, next_step,
@@ -177,11 +177,13 @@ the same protocol; none owns server-side loop semantics.
 ### Work Graph overlay
 
 `workflow_template=single-loop` preserves the compact run/checkpoint model.
-`workflow_template=cs-one-flow` creates eight ordered `run_nodes`. A node is
-`ready` only when all dependency nodes are `completed` or `skipped`. Agents
-write stage results, artifact IDs, input fingerprints, and evidence through the
-CLI. The server rejects dependency skips and refuses to finish the run while a
-node or human interrupt remains open.
+`workflow_template=engineering-flow` creates eight ordered `run_nodes`.
+`workflow_definition` accepts any portable JSON Workflow Adapter with 1–32
+nodes. A node is `ready` only when all dependency nodes are `completed` or
+`skipped`. Agents write stage results, artifact IDs, input fingerprints, and
+evidence through the CLI. The server rejects duplicate keys, unknown
+dependencies, cycles, dependency skips, and completion while a node or human
+interrupt remains open.
 
 This graph is an outer durability layer, not an Agent engine:
 
@@ -192,8 +194,9 @@ RunEngram Work Graph
        └──────── each node contains an ordinary Agent tool loop ────────────┘
 ```
 
-The existing `cs-sop-one-flow` skill maps its outputs onto these nodes. Codex,
-Claude Code, or Pi still owns tool selection and iteration inside a node.
+An installed project skill, command, or human SOP maps outputs onto these
+nodes. Codex, Claude Code, or Pi still owns tool selection and iteration inside
+a node.
 `run_interrupts` model explicit questions or approvals; a human browser or a
 different CLI actor resolves them, after which the same node and run resume.
 The `final-gate` rejects self-approval by the executing Agent. No queue worker

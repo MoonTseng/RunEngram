@@ -25,7 +25,27 @@ var runStartCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentTool, _ := cmd.Flags().GetString("agent-tool")
 		workflow, _ := cmd.Flags().GetString("workflow")
-		result, err := newClient().StartAgentRunWithWorkflow(args[0], agentTool, workflow)
+		workflowFile, _ := cmd.Flags().GetString("workflow-file")
+		var definition *client.WorkflowDefinition
+		if workflowFile != "" {
+			content, err := os.ReadFile(workflowFile)
+			if err != nil {
+				return fmt.Errorf("read --workflow-file: %w", err)
+			}
+			definition = &client.WorkflowDefinition{}
+			if err := json.Unmarshal(content, definition); err != nil {
+				return fmt.Errorf("parse --workflow-file: %w", err)
+			}
+			if workflow == "" {
+				workflow = definition.Template
+			}
+		}
+		result, err := newClient().StartAgentRunWithDefinition(
+			args[0],
+			agentTool,
+			workflow,
+			definition,
+		)
 		if err != nil {
 			return err
 		}
@@ -43,7 +63,7 @@ var runStartCmd = &cobra.Command{
 
 var runGraphCmd = &cobra.Command{
 	Use:   "graph <run-id>",
-	Short: "Show durable one-flow stage graph and receipts",
+	Short: "Show durable workflow stages and receipts",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {
 		graph, err := newClient().GetRunWorkGraph(args[0])
@@ -67,7 +87,7 @@ var runGraphCmd = &cobra.Command{
 
 var runNodeCmd = &cobra.Command{
 	Use:   "node <run-id> <node-key>",
-	Short: "Update one one-flow stage with artifacts and evidence",
+	Short: "Update one workflow stage with artifacts and evidence",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		status, _ := cmd.Flags().GetString("status")
@@ -124,7 +144,7 @@ var runInterruptCmd = &cobra.Command{
 
 var runRespondCmd = &cobra.Command{
 	Use:   "respond <interrupt-id>",
-	Short: "Resolve a one-flow human interrupt",
+	Short: "Resolve a workflow human interrupt",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		response, _ := cmd.Flags().GetString("response")
@@ -253,7 +273,10 @@ func init() {
 		"agent-tool", "codex", "execution engine: codex|claude-code|pi|other",
 	)
 	runStartCmd.Flags().String(
-		"workflow", "", "workflow: single-loop|cs-one-flow",
+		"workflow", "", "workflow template: single-loop|engineering-flow|custom-slug",
+	)
+	runStartCmd.Flags().String(
+		"workflow-file", "", "JSON definition for a custom workflow template",
 	)
 	runNodeCmd.Flags().String(
 		"status", "running", "pending|ready|running|waiting|completed|failed|skipped",

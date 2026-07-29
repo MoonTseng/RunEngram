@@ -64,20 +64,23 @@ export function WorkGraphProgress({
   return (
     <section
       className="mt-6 overflow-hidden rounded-xl border border-[var(--tl-outline)] bg-[var(--tl-bg-quiet)]"
-      aria-label={zh ? "One-flow 研发闭环" : "One-flow engineering loop"}
+      aria-label={zh ? "可恢复工作图" : "Resumable Work Graph"}
     >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--tl-outline)] p-4">
         <div>
           <div className="flex items-center gap-2">
             <Gauge size={18} className="text-[var(--tl-primary)]" />
             <h3 className="font-bold">
-              {zh ? "One-flow 研发闭环" : "One-flow engineering loop"}
+              {zh ? "可恢复工作图" : "Resumable Work Graph"}
             </h3>
           </div>
           <p className="mt-1 text-sm text-[var(--tl-ink-muted)]">
             {zh
               ? "每个阶段留下结果、证据和恢复点。"
               : "Every stage leaves a result, evidence, and recovery point."}
+          </p>
+          <p className="mt-1 font-mono text-xs text-[var(--tl-ink-faint)]">
+            {graph.template} · v{graph.version}
           </p>
         </div>
         <strong className="text-2xl">{graph.progress_percent}%</strong>

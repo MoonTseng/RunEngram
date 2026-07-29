@@ -56,7 +56,7 @@
         "source_task_id": "task-0001",
         "kind": "human-correction",
         "trigger": "Direct Notion fetch did not produce a normalized requirement.",
-        "guidance": "Use one-flow/notion-to-prd before requirement analysis.",
+        "guidance": "Use project/requirement-import before requirement analysis.",
         "scope": "Notion requirement analysis",
         "labels": [
           "notion",

@@ -37,6 +37,20 @@ type RunStartResult struct {
 	Resumed bool     `json:"resumed"`
 }
 
+type WorkflowNodeSpec struct {
+	Key        string   `json:"key"`
+	Title      string   `json:"title"`
+	Capability string   `json:"capability"`
+	Kind       string   `json:"kind"`
+	DependsOn  []string `json:"depends_on"`
+}
+
+type WorkflowDefinition struct {
+	Template string             `json:"template"`
+	Version  int                `json:"version"`
+	Nodes    []WorkflowNodeSpec `json:"nodes"`
+}
+
 type TaskResumeContext struct {
 	Snapshot     ContextSnapshot `json:"snapshot"`
 	LatestRun    *AgentRun       `json:"latest_run,omitempty"`
@@ -51,11 +65,21 @@ func (c *Client) StartAgentRun(taskID, agentTool string) (*RunStartResult, error
 func (c *Client) StartAgentRunWithWorkflow(
 	taskID, agentTool, workflow string,
 ) (*RunStartResult, error) {
+	return c.StartAgentRunWithDefinition(taskID, agentTool, workflow, nil)
+}
+
+func (c *Client) StartAgentRunWithDefinition(
+	taskID, agentTool, workflow string,
+	definition *WorkflowDefinition,
+) (*RunStartResult, error) {
 	var out RunStartResult
 	path := fmt.Sprintf("/api/v1/tasks/%s/runs", url.PathEscape(taskID))
 	input := map[string]any{"agent_tool": agentTool}
 	if workflow != "" {
 		input["workflow_template"] = workflow
+	}
+	if definition != nil {
+		input["workflow_definition"] = definition
 	}
 	if err := c.do("POST", path, input, &out); err != nil {
 		return nil, err

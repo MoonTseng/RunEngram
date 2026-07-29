@@ -131,7 +131,7 @@ func TestLearningNotePersistenceAndTaskAttachment(t *testing.T) {
 		SourceTaskID: task.ID,
 		Kind:         model.LearningNoteHumanCorrection,
 		Trigger:      "Notion link was not readable",
-		Guidance:     "Use one-flow/notion-to-prd",
+		Guidance:     "Use project/requirement-import",
 		Scope:        "Notion requirement analysis",
 		Labels:       []string{"notion", "prd"},
 		Fingerprints: []string{"notion-to-prd"},
@@ -1028,7 +1028,7 @@ func TestMigrationsRunOnceAcrossReopens(t *testing.T) {
 
 	v1, err := readUserVersion(path)
 	require.NoError(t, err)
-	require.Equal(t, 18, v1, "first open should advance to latest schema version")
+	require.Equal(t, 19, v1, "first open should advance to latest schema version")
 
 	require.NoError(t, st1.Close())
 
@@ -1177,7 +1177,7 @@ func TestMigrationAddsDocsTypeWithoutDroppingTaskChildren(t *testing.T) {
 
 	v, err := readUserVersion(path)
 	require.NoError(t, err)
-	require.Equal(t, 18, v)
+	require.Equal(t, 19, v)
 
 	got, err := st.GetTask(ctx, "b")
 	require.NoError(t, err)
@@ -1251,7 +1251,7 @@ func TestMigrationUpgradesCreatedAndDesignRows(t *testing.T) {
 
 	v, err := readUserVersion(path)
 	require.NoError(t, err)
-	require.Equal(t, 18, v, "migration should have run through latest schema version")
+	require.Equal(t, 19, v, "migration should have run through latest schema version")
 
 	// The legacy 'created' row was renamed to 'start' during the swap.
 	ta, err := st.GetTask(ctx, "a")
@@ -1281,6 +1281,56 @@ func TestMigrationUpgradesCreatedAndDesignRows(t *testing.T) {
 	docs, err := st.CreateTask(ctx, "p1", "docs", "", model.TaskTypeDocs, 0, model.StateStart)
 	require.NoError(t, err)
 	require.Equal(t, model.TaskTypeDocs, docs.Type)
+}
+
+func TestMigration19MapsLegacyWorkflowKey(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "taskline.db")
+	raw, err := sql.Open("sqlite", "file:"+path)
+	require.NoError(t, err)
+	_, err = raw.ExecContext(ctx, `
+		CREATE TABLE agent_runs (
+		    id TEXT PRIMARY KEY,
+		    task_id TEXT NOT NULL,
+		    project_id TEXT NOT NULL,
+		    agent_name TEXT NOT NULL,
+		    agent_tool TEXT NOT NULL,
+		    status TEXT NOT NULL,
+		    summary TEXT NOT NULL DEFAULT '',
+		    next_step TEXT NOT NULL DEFAULT '',
+		    started_at INTEGER NOT NULL,
+		    updated_at INTEGER NOT NULL,
+		    completed_at INTEGER NOT NULL DEFAULT 0,
+		    workflow_template TEXT NOT NULL DEFAULT 'single-loop'
+		        CHECK (workflow_template IN ('single-loop', 'cs-one-flow')),
+		    workflow_version INTEGER NOT NULL DEFAULT 1
+		);
+		INSERT INTO agent_runs(
+		    id,task_id,project_id,agent_name,agent_tool,status,
+		    workflow_template,workflow_version,started_at,updated_at
+		) VALUES(
+		    'legacy-run','task-1','project-1','codex','codex','completed',
+		    'cs-one-flow',1,1,2
+		);
+		PRAGMA user_version=18;
+	`)
+	require.NoError(t, err)
+	require.NoError(t, raw.Close())
+
+	st, err := store.New(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+	run, err := st.GetAgentRun(ctx, "legacy-run")
+	require.NoError(t, err)
+	require.Equal(t, model.WorkflowTemplateEngineeringFlow, run.WorkflowTemplate)
+	require.Equal(t, 19, readStoreUserVersion(t, path))
+}
+
+func readStoreUserVersion(t *testing.T, path string) int {
+	t.Helper()
+	version, err := readUserVersion(path)
+	require.NoError(t, err)
+	return version
 }
 
 // readUserVersion opens a side-channel SQL handle to inspect the

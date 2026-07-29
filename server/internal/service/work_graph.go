@@ -10,43 +10,152 @@ import (
 	"taskline_server/internal/store"
 )
 
-type workflowNodeDefinition struct {
-	Key        string
-	Title      string
-	Capability string
-	Kind       string
-	DependsOn  []string
+var engineeringFlowDefinition = model.WorkflowDefinition{
+	Template: model.WorkflowTemplateEngineeringFlow,
+	Version:  1,
+	Nodes: []model.WorkflowNodeSpec{
+		{Key: "requirement-analysis", Title: "需求分析", Capability: "prd-analysis", Kind: "agent-loop"},
+		{Key: "technical-design", Title: "技术方案", Capability: "technical-design", Kind: "agent-loop", DependsOn: []string{"requirement-analysis"}},
+		{Key: "task-planning", Title: "任务规划", Capability: "task-planning", Kind: "agent-loop", DependsOn: []string{"technical-design"}},
+		{Key: "implementation", Title: "代码实现", Capability: "coding", Kind: "agent-loop", DependsOn: []string{"task-planning"}},
+		{Key: "refactor", Title: "重构优化", Capability: "refactoring", Kind: "agent-loop", DependsOn: []string{"implementation"}},
+		{Key: "verification", Title: "测试验证", Capability: "verification", Kind: "evaluator", DependsOn: []string{"refactor"}},
+		{Key: "code-review", Title: "独立复核", Capability: "code-review", Kind: "evaluator", DependsOn: []string{"verification"}},
+		{Key: "final-gate", Title: "结果确认", Capability: "human-approval", Kind: "human", DependsOn: []string{"code-review"}},
+	},
 }
 
-var csOneFlowDefinition = []workflowNodeDefinition{
-	{Key: "requirement-analysis", Title: "需求分析", Capability: "prd-analysis", Kind: "agent-loop"},
-	{Key: "technical-design", Title: "技术方案", Capability: "technical-design", Kind: "agent-loop", DependsOn: []string{"requirement-analysis"}},
-	{Key: "task-planning", Title: "任务规划", Capability: "task-planning", Kind: "agent-loop", DependsOn: []string{"technical-design"}},
-	{Key: "implementation", Title: "代码实现", Capability: "coding", Kind: "agent-loop", DependsOn: []string{"task-planning"}},
-	{Key: "refactor", Title: "重构优化", Capability: "refactoring", Kind: "agent-loop", DependsOn: []string{"implementation"}},
-	{Key: "verification", Title: "测试验证", Capability: "verification", Kind: "evaluator", DependsOn: []string{"refactor"}},
-	{Key: "code-review", Title: "独立复核", Capability: "code-review", Kind: "evaluator", DependsOn: []string{"verification"}},
-	{Key: "final-gate", Title: "结果确认", Capability: "human-approval", Kind: "human", DependsOn: []string{"code-review"}},
-}
-
-func buildWorkflowNodes(template model.WorkflowTemplate) []*model.RunNode {
-	if template != model.WorkflowTemplateCSOneFlow {
-		return nil
+func buildWorkflowNodes(
+	template model.WorkflowTemplate,
+	custom *model.WorkflowDefinition,
+) ([]*model.RunNode, int, error) {
+	if template == model.WorkflowTemplateSingleLoop {
+		if custom != nil && len(custom.Nodes) > 0 {
+			return nil, 0, errors.New("single-loop cannot define workflow nodes")
+		}
+		return nil, 1, nil
 	}
-	nodes := make([]*model.RunNode, 0, len(csOneFlowDefinition))
-	for position, definition := range csOneFlowDefinition {
+	definition := custom
+	if definition == nil && template == model.WorkflowTemplateEngineeringFlow {
+		builtin := engineeringFlowDefinition
+		definition = &builtin
+	}
+	if definition == nil {
+		return nil, 0, fmt.Errorf(
+			"workflow definition required for custom template %q",
+			template,
+		)
+	}
+	if definition.Template == "" {
+		definition.Template = template
+	}
+	if definition.Template != template {
+		return nil, 0, errors.New("workflow definition template mismatch")
+	}
+	if err := validateWorkflowDefinition(definition); err != nil {
+		return nil, 0, err
+	}
+	version := definition.Version
+	if version == 0 {
+		version = 1
+	}
+	nodes := make([]*model.RunNode, 0, len(definition.Nodes))
+	for position, nodeSpec := range definition.Nodes {
 		status := model.RunNodePending
-		if len(definition.DependsOn) == 0 {
+		if len(nodeSpec.DependsOn) == 0 {
 			status = model.RunNodeReady
 		}
 		nodes = append(nodes, &model.RunNode{
-			Key: definition.Key, Title: definition.Title,
-			Capability: definition.Capability, Kind: definition.Kind,
-			Position: position, DependsOn: append([]string(nil), definition.DependsOn...),
+			Key: nodeSpec.Key, Title: nodeSpec.Title,
+			Capability: nodeSpec.Capability, Kind: nodeSpec.Kind,
+			Position: position, DependsOn: append([]string(nil), nodeSpec.DependsOn...),
 			Status: status, ArtifactIDs: []string{},
 		})
 	}
-	return nodes
+	return nodes, version, nil
+}
+
+func validateWorkflowDefinition(definition *model.WorkflowDefinition) error {
+	if definition == nil {
+		return errors.New("workflow definition required")
+	}
+	if !definition.Template.Valid() ||
+		definition.Template == model.WorkflowTemplateSingleLoop {
+		return fmt.Errorf("invalid graph workflow template %q", definition.Template)
+	}
+	if definition.Version < 0 {
+		return errors.New("workflow version cannot be negative")
+	}
+	if len(definition.Nodes) < 1 || len(definition.Nodes) > 32 {
+		return errors.New("workflow definition requires 1 to 32 nodes")
+	}
+	nodeByKey := make(map[string]model.WorkflowNodeSpec, len(definition.Nodes))
+	for index := range definition.Nodes {
+		node := &definition.Nodes[index]
+		node.Key = strings.TrimSpace(node.Key)
+		node.Title = strings.TrimSpace(node.Title)
+		node.Capability = strings.TrimSpace(node.Capability)
+		node.Kind = strings.TrimSpace(node.Kind)
+		node.DependsOn = uniqueNonEmpty(node.DependsOn)
+		if !model.WorkflowTemplate(node.Key).Valid() {
+			return fmt.Errorf("invalid workflow node key %q", node.Key)
+		}
+		if node.Title == "" || len(node.Title) > 120 {
+			return fmt.Errorf("workflow node %s requires title up to 120 bytes", node.Key)
+		}
+		if node.Capability == "" || len(node.Capability) > 100 {
+			return fmt.Errorf("workflow node %s requires capability up to 100 bytes", node.Key)
+		}
+		switch node.Kind {
+		case "agent-loop", "evaluator", "human", "tool":
+		default:
+			return fmt.Errorf("workflow node %s has invalid kind %q", node.Key, node.Kind)
+		}
+		if _, exists := nodeByKey[node.Key]; exists {
+			return fmt.Errorf("duplicate workflow node key %q", node.Key)
+		}
+		nodeByKey[node.Key] = *node
+	}
+	indegree := make(map[string]int, len(nodeByKey))
+	children := make(map[string][]string, len(nodeByKey))
+	for _, node := range definition.Nodes {
+		for _, dependency := range node.DependsOn {
+			if dependency == node.Key {
+				return fmt.Errorf("workflow node %s cannot depend on itself", node.Key)
+			}
+			if _, exists := nodeByKey[dependency]; !exists {
+				return fmt.Errorf(
+					"workflow node %s depends on unknown node %s",
+					node.Key,
+					dependency,
+				)
+			}
+			indegree[node.Key]++
+			children[dependency] = append(children[dependency], node.Key)
+		}
+	}
+	queue := make([]string, 0, len(nodeByKey))
+	for key := range nodeByKey {
+		if indegree[key] == 0 {
+			queue = append(queue, key)
+		}
+	}
+	visited := 0
+	for len(queue) > 0 {
+		key := queue[0]
+		queue = queue[1:]
+		visited++
+		for _, child := range children[key] {
+			indegree[child]--
+			if indegree[child] == 0 {
+				queue = append(queue, child)
+			}
+		}
+	}
+	if visited != len(nodeByKey) {
+		return errors.New("workflow definition contains a dependency cycle")
+	}
+	return nil
 }
 
 type UpdateRunNodeInput struct {
@@ -197,7 +306,7 @@ func (s *Service) UpdateRunNode(
 		ctx,
 		task.ID,
 		string(model.RunEventNodeUpdated),
-		fmt.Sprintf("Updated one-flow stage: %s", node.Title),
+		fmt.Sprintf("Updated Work Graph stage: %s", node.Title),
 		runEventDetails(run, map[string]any{
 			"node_key": node.Key, "node_status": node.Status,
 			"summary": node.Summary, "artifact_count": len(node.ArtifactIDs),

@@ -71,9 +71,9 @@ The current alpha ships the **task execution and learning kernel**:
 - immutable task-start context snapshots;
 - tool-neutral Agent runs with normalized events, compact checkpoints,
   interruption recovery, and completion/recovery metrics;
-- an optional `cs-one-flow` Work Graph: eight dependency-checked stages,
-  per-stage artifacts and evidence, typed human interrupts, and complete
-  cross-session restore;
+- an optional built-in `engineering-flow` plus custom JSON Workflow Adapters:
+  dependency-checked stages, per-stage artifacts and evidence, typed human
+  interrupts, and complete cross-session restore;
 - verified Exploration Capsules with project scope, evidence, fingerprints,
   source task, and producer;
 - agent-driven capture of human corrections and successful recovery paths as
@@ -131,10 +131,10 @@ reasoning process. Codex, Claude Code, Cursor, custom agents, and team SOPs can
 map their local phases onto the same work protocol.
 
 Graph is selective, not mandatory. Short docs, research, and tightly coupled
-changes keep one flexible Agent loop. Long requirement work uses a Work Graph
-when context decay, independent verification, parallelism, or explicit human
-decisions justify the extra structure. A project-specific SOP such as
-`cs-sop-one-flow` supplies domain behavior; RunEngram supplies durable state and
+changes keep one flexible Agent loop. Longer work uses a Work Graph when
+context decay, independent verification, parallelism, or explicit human
+decisions justify the extra structure. A project-specific SOP supplies domain
+behavior through a Workflow Adapter; RunEngram supplies durable state and
 receipts.
 
 ### 5. Reversible work, append-only evidence
@@ -219,9 +219,10 @@ learning improvement.
    candidate metrics.
 5. ✅ Add first-class resumable runs, normalized events, visible learning
    receipts, and editable pending candidates.
-6. ✅ Add selective One-flow Work Graphs, typed human interrupts, stage
-   receipts, and an Action Console that exposes observed completion, evidence,
-   artifacts, recalled context, and pending decisions.
+6. ✅ Add selective workflow-neutral Work Graphs, JSON Workflow Adapters,
+   typed human interrupts, stage receipts, and an Action Console that exposes
+   observed completion, evidence, artifacts, recalled context, and pending
+   decisions.
 7. Add optional human/team review policy and promotion into skills, tests,
    lint rules, templates, and workflow gates.
 8. Add richer learning-lift measurement after pilot data exists.

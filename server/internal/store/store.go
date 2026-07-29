@@ -72,6 +72,9 @@ var schemaWorkGraph string
 //go:embed schema/0018_run_interrupt_guards.sql
 var schemaRunInterruptGuards string
 
+//go:embed schema/0019_generic_workflows.sql
+var schemaGenericWorkflows string
+
 // schemaMigrations defines the canonical migration set, keyed by
 // monotonically increasing version. We track the last-applied version in
 // SQLite's built-in `PRAGMA user_version` and only run migrations whose
@@ -102,6 +105,7 @@ var schemaMigrations = []migration{
 	{version: 16, sql: schemaAgentRuns},
 	{version: 17, sql: schemaWorkGraph},
 	{version: 18, sql: schemaRunInterruptGuards},
+	{version: 19, sql: schemaGenericWorkflows},
 }
 
 // ErrNotFound is returned when a lookup misses.

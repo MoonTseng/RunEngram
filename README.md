@@ -17,12 +17,12 @@ RunEngram keeps the task, the context given to the agent, the test evidence,
 and any reusable lesson in one local store. Codex is the default client, but
 the protocol also works with Claude Code or any tool that can call the CLI.
 
-> **Early alpha.** We use it locally. Resumable Agent runs, One-flow Work
-> Graphs, context snapshots, stage receipts, human interrupts, learning
+> **Early alpha.** We use it locally. Resumable Agent runs, workflow-neutral
+> Work Graphs, context snapshots, stage receipts, human interrupts, learning
 > review, recall, and reuse metrics work now. Automatic conversion of
 > experience into enforced project rules is not implemented.
 
-![RunEngram One-flow Work Graph](./docs/assets/runengram-oneflow-work-graph.png)
+![RunEngram Work Graph](./docs/assets/runengram-work-graph.jpg)
 
 <p align="center"><sub>The default Dracula view shows current stage, evidence, artifacts, pending decisions, and recalled project notes.</sub></p>
 
@@ -78,10 +78,11 @@ flowchart LR
 RunEngram sits outside the coding agent. Existing prompts, skills, CI, and
 team SOPs stay in place.
 
-## One-flow without a second workflow engine
+## Bring your own flow
 
-For requirement development, `cs-one-flow` wraps the existing SOP in eight
-durable stages:
+RunEngram does not ship another workflow engine. It adds durable state around
+the SOP a project already uses. The built-in `engineering-flow` provides a
+useful eight-stage graph:
 
 ```mermaid
 flowchart LR
@@ -94,17 +95,27 @@ flowchart LR
     G --> H["Final gate"]
 ```
 
-Codex or Claude Code still decides how to work inside a stage. Existing
-`cs-sop-one-flow` skills still own project-specific development rules.
-RunEngram only records what must survive a session: dependency state, result,
-artifact IDs, input version, verification evidence, and explicit questions for
-the developer.
+Codex, Claude Code, Pi, or another Agent still decides how to work inside each
+stage. Project skills, commands, and human playbooks keep their domain rules.
+RunEngram records only what must survive a session: dependencies, results,
+artifact IDs, input versions, verification evidence, and explicit questions.
 
-The graph is adaptive, not the default for every task. An explicit one-flow
-request enables it. Otherwise RunEngram selects it only when implementation has multiple
-signals such as cross-session context loss, independent branches, expensive
-intermediate results, or a human delivery gate. Small fixes, docs, and research
-stay on a single Agent loop.
+Other flows use the same protocol. A small JSON Workflow Adapter declares a
+template name, version, nodes, capabilities, node kinds, and dependencies:
+
+```bash
+taskline run start <task-id> --agent-tool claude-code \
+  --workflow content-review \
+  --workflow-file examples/workflows/content-review.json
+```
+
+RunEngram validates the DAG, then stores its runtime state. It never executes
+or reimplements the underlying SOP. See
+[Workflow Adapters](./docs/design/2026-07-29-workflow-adapters.md).
+
+Work Graphs are adaptive, not mandatory. Use one when work spans sessions, has
+independent branches, expensive intermediate results, or a human gate. Small
+fixes and short tasks stay on one Agent loop.
 
 This makes progress inspectable without pretending that a Kanban column proves
 work is correct. The Action Console reports observed counts—completed stages,
@@ -120,7 +131,7 @@ feature-by-feature scorecard.
 | --- | --- | --- | --- | --- | --- |
 | Main job | Close task → evidence → memory loop | Store repository facts for Copilot | Persist instructions and auto memory | Execute agents in workspaces | Measure software delivery |
 | Task state and agent leases | Yes | No | No | Execution sessions | Delivery workflow data |
-| Durable multi-stage work graph | One-flow stages + receipts + human interrupts | No | No | Agent workflow | Delivery workflow only |
+| Durable multi-stage work graph | Built-in or custom flow + receipts + human interrupts | No | No | Agent workflow | Delivery workflow only |
 | Resumable run checkpoints | Yes, tool-neutral protocol | No | Session transcript | Session state | No |
 | Immutable task context | Yes | No | No | Workspace/session context | No |
 | Evidence-gated memory promotion | Yes | Citation validation | Manual files / auto memory | No | No |
@@ -141,8 +152,9 @@ Sources: [GitHub Copilot Memory](https://docs.github.com/en/copilot/concepts/age
 - Atomic claims, leases, heartbeats, and interrupted-task recovery.
 - First-class Agent runs for Codex, Claude Code, Pi, or another executor:
   normalized events, compact checkpoints, resume context, and completion status.
-- Optional `cs-one-flow` Work Graph with eight dependency-checked stages,
-  per-stage artifacts/evidence, typed human interrupts, and full resume state.
+- Optional built-in `engineering-flow` plus custom JSON Workflow Adapters,
+  dependency-checked stages, per-stage artifacts/evidence, typed human
+  interrupts, and full resume state.
 - Append-only task history with actor, time, and changed fields.
 - Manual review and completion for teams without GitHub PR or CI; links and
   verification documents can still be attached when available.
@@ -278,7 +290,7 @@ export TASKLINE_PROJECT=demo
 TASK_ID="<claimed-task-id>"
 ./dist/taskline task context "$TASK_ID"
 ./dist/taskline run start "$TASK_ID" --agent-tool codex \
-  --workflow cs-one-flow
+  --workflow engineering-flow
 RUN_ID="<run-id from previous output>"
 ./dist/taskline run node "$RUN_ID" requirement-analysis \
   --status completed \
@@ -333,9 +345,9 @@ taskline-management pending <requirement>
 ```
 
 - default: create one runnable task, then stop;
-- `run`: create, claim, and execute that exact task; complex requirement work
-  uses the One-flow Work Graph and integrates with `cs-sop-one-flow` when
-  installed, while small work stays on a single loop;
+- `run`: create, claim, and execute that exact task; complex work can wrap an
+  installed project flow in a durable Work Graph, while small work stays on a
+  single loop;
 - `spec`: create, claim, attach a Spec, then stop before code changes;
 - `pending`: create the task in the non-runnable backlog.
 
@@ -348,7 +360,7 @@ taskline task context <task-id>
 taskline learning capture --project your-project --task <task-id> \
   --kind human-correction \
   --trigger "Notion requirement could not be read directly" \
-  --guidance "Use the one-flow notion-to-prd step before PRD analysis" \
+  --guidance "Use the project's requirement-import step before PRD analysis" \
   --scope "Requirements linked from Notion" --producer codex
 taskline learning list --project your-project --status pending
 taskline learning edit <learning-note-id> \
@@ -379,7 +391,7 @@ flowchart LR
     API["RunEngram API"]
     Task["Task state, dependencies, claims, history"]
     Run["Agent run, events, checkpoints"]
-    Graph["One-flow Work Graph, receipts, interrupts"]
+    Graph["Workflow-neutral Work Graph, receipts, interrupts"]
     Evidence["Verification evidence"]
     Candidate["Pending learning notes"]
     Learning["Verified Exploration Capsules"]
@@ -405,7 +417,7 @@ More detail:
 
 - [Architecture](./ARCHITECTURE.md)
 - [Product philosophy](./PRODUCT.md)
-- [One-flow Work Graph design](./docs/design/2026-07-29-oneflow-work-graph.md)
+- [Workflow Adapter and Work Graph design](./docs/design/2026-07-29-workflow-adapters.md)
 - [Graph Engineering research (Chinese)](./docs/research/graph-engineering-2026.md)
 - [L1 / L2 / L3 agent loop](./docs/agent-loop-architecture.zh-CN.md)
 - [Contributor guide](./AGENTS.md)

@@ -25,4 +25,7 @@ func TestRunLoopCommandsRegistered(t *testing.T) {
 	if findCommand(run, "start").Flags().Lookup("workflow") == nil {
 		t.Fatal("run start --workflow flag not registered")
 	}
+	if findCommand(run, "start").Flags().Lookup("workflow-file") == nil {
+		t.Fatal("run start --workflow-file flag not registered")
+	}
 }

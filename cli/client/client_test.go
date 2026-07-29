@@ -10,6 +10,63 @@ import (
 	"cli.taskline.dev/client"
 )
 
+func TestStartAgentRunSendsPortableWorkflowDefinition(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/tasks/task-one/runs" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body struct {
+			AgentTool          string                    `json:"agent_tool"`
+			WorkflowTemplate   string                    `json:"workflow_template"`
+			WorkflowDefinition client.WorkflowDefinition `json:"workflow_definition"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body.AgentTool != "claude-code" ||
+			body.WorkflowTemplate != "content-review" ||
+			len(body.WorkflowDefinition.Nodes) != 2 {
+			t.Fatalf("unexpected body: %#v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(client.RunStartResult{
+			Run: client.AgentRun{
+				ID: "run-one", TaskID: "task-one", AgentTool: "claude-code",
+				WorkflowTemplate: "content-review", WorkflowVersion: 2,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	definition := &client.WorkflowDefinition{
+		Template: "content-review",
+		Version:  2,
+		Nodes: []client.WorkflowNodeSpec{
+			{
+				Key: "draft", Title: "Draft", Capability: "writing",
+				Kind: "agent-loop",
+			},
+			{
+				Key: "review", Title: "Review", Capability: "review",
+				Kind: "evaluator", DependsOn: []string{"draft"},
+			},
+		},
+	}
+	result, err := client.New(srv.URL).StartAgentRunWithDefinition(
+		"task-one",
+		"claude-code",
+		"content-review",
+		definition,
+	)
+	if err != nil {
+		t.Fatalf("StartAgentRunWithDefinition: %v", err)
+	}
+	if result.Run.WorkflowTemplate != "content-review" ||
+		result.Run.WorkflowVersion != 2 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
 func TestDocClientLifecycle(t *testing.T) {
 	var seen []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -222,7 +279,7 @@ func TestLearningClientUsesIdentityAndStablePayload(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatalf("decode input: %v", err)
 		}
-		if body.Guidance != "Use one-flow/notion-to-prd" {
+		if body.Guidance != "Use project/requirement-import" {
 			t.Fatalf("guidance = %q", body.Guidance)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -240,7 +297,7 @@ func TestLearningClientUsesIdentityAndStablePayload(t *testing.T) {
 		SourceTaskID: "task-1",
 		Kind:         "human-correction",
 		Trigger:      "Notion link unreadable",
-		Guidance:     "Use one-flow/notion-to-prd",
+		Guidance:     "Use project/requirement-import",
 	})
 	if err != nil {
 		t.Fatalf("CaptureLearningNote: %v", err)

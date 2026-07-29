@@ -1,0 +1,34 @@
+{
+  "template": "content-review",
+  "version": 1,
+  "nodes": [
+    {
+      "key": "source-review",
+      "title": "Source review",
+      "capability": "research",
+      "kind": "agent-loop",
+      "depends_on": []
+    },
+    {
+      "key": "draft",
+      "title": "Draft",
+      "capability": "writing",
+      "kind": "agent-loop",
+      "depends_on": ["source-review"]
+    },
+    {
+      "key": "fact-check",
+      "title": "Fact check",
+      "capability": "verification",
+      "kind": "evaluator",
+      "depends_on": ["draft"]
+    },
+    {
+      "key": "publish-gate",
+      "title": "Publish decision",
+      "capability": "human-approval",
+      "kind": "human",
+      "depends_on": ["fact-check"]
+    }
+  ]
+}

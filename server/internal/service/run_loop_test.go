@@ -104,26 +104,26 @@ func TestAgentRunCheckpointsResumeAndMeasureRecovery(t *testing.T) {
 	require.Equal(t, 1.0, metrics.RecoveryRate)
 }
 
-func TestOneFlowRunCreatesDurableWorkGraphAndTypedInterrupt(t *testing.T) {
+func TestEngineeringFlowRunCreatesDurableWorkGraphAndTypedInterrupt(t *testing.T) {
 	ctx := service.WithActor(context.Background(), "codex")
 	svc := newSvc(t)
-	project, err := svc.CreateProject(ctx, "one-flow-graph", "")
+	project, err := svc.CreateProject(ctx, "engineering-flow-graph", "")
 	require.NoError(t, err)
 	task, err := svc.CreateTask(
 		ctx,
 		project.ID,
-		"Build a CamScanner requirement",
-		"Run the existing one-flow SOP with durable stage receipts.",
+		"Build a product requirement",
+		"Run the existing project SOP with durable stage receipts.",
 		model.TaskTypeFeature,
 		2,
 		true,
-		[]string{"one-flow"},
+		[]string{"engineering-flow"},
 	)
 	require.NoError(t, err)
 	task, err = svc.ClaimTask(ctx, task.ID, service.ClaimOptions{Owner: "codex"})
 	require.NoError(t, err)
 	specDoc := &model.Doc{
-		TaskID: task.ID, Title: "Spec", StoragePath: "/tmp/one-flow-spec.md",
+		TaskID: task.ID, Title: "Spec", StoragePath: "/tmp/engineering-flow-spec.md",
 	}
 	require.NoError(t, svc.AddDoc(ctx, specDoc))
 
@@ -131,16 +131,16 @@ func TestOneFlowRunCreatesDurableWorkGraphAndTypedInterrupt(t *testing.T) {
 		TaskID:           task.ID,
 		AgentName:        "codex",
 		AgentTool:        model.AgentToolCodex,
-		WorkflowTemplate: model.WorkflowTemplateCSOneFlow,
+		WorkflowTemplate: model.WorkflowTemplateEngineeringFlow,
 	})
 	require.NoError(t, err)
 	require.False(t, resumed)
-	require.Equal(t, model.WorkflowTemplateCSOneFlow, run.WorkflowTemplate)
+	require.Equal(t, model.WorkflowTemplateEngineeringFlow, run.WorkflowTemplate)
 	require.Equal(t, 1, run.WorkflowVersion)
 
 	graph, err := svc.GetRunWorkGraph(ctx, run.ID)
 	require.NoError(t, err)
-	require.Equal(t, model.WorkflowTemplateCSOneFlow, graph.Template)
+	require.Equal(t, model.WorkflowTemplateEngineeringFlow, graph.Template)
 	require.Len(t, graph.Nodes, 8)
 	require.Equal(t, "requirement-analysis", graph.Nodes[0].Key)
 	require.Equal(t, model.RunNodeReady, graph.Nodes[0].Status)
@@ -201,10 +201,95 @@ func TestOneFlowRunCreatesDurableWorkGraphAndTypedInterrupt(t *testing.T) {
 	require.Empty(t, resume.WorkGraph.Interrupts)
 }
 
-func TestOneFlowFinalGateRequiresHumanDecisionAndInvalidatesDownstreamReceipts(t *testing.T) {
+func TestCustomWorkflowDefinitionCreatesPortableGraph(t *testing.T) {
 	ctx := service.WithActor(context.Background(), "codex")
 	svc := newSvc(t)
-	project, err := svc.CreateProject(ctx, "one-flow-gates", "")
+	project, err := svc.CreateProject(ctx, "custom-workflow", "")
+	require.NoError(t, err)
+	task, err := svc.CreateTask(
+		ctx, project.ID, "Publish a design note", "", model.TaskTypeDocs, 2, true, nil,
+	)
+	require.NoError(t, err)
+	task, err = svc.ClaimTask(ctx, task.ID, service.ClaimOptions{Owner: "codex"})
+	require.NoError(t, err)
+
+	definition := &model.WorkflowDefinition{
+		Template: "content-review",
+		Version:  3,
+		Nodes: []model.WorkflowNodeSpec{
+			{
+				Key: "draft", Title: "Draft", Capability: "writing",
+				Kind: "agent-loop",
+			},
+			{
+				Key: "fact-check", Title: "Fact check", Capability: "verification",
+				Kind: "evaluator", DependsOn: []string{"draft"},
+			},
+			{
+				Key: "publish-gate", Title: "Publish", Capability: "human-approval",
+				Kind: "human", DependsOn: []string{"fact-check"},
+			},
+		},
+	}
+	run, resumed, err := svc.StartOrResumeRun(ctx, service.StartRunInput{
+		TaskID: task.ID, AgentName: "codex", AgentTool: model.AgentToolCodex,
+		WorkflowTemplate: definition.Template, WorkflowDefinition: definition,
+	})
+	require.NoError(t, err)
+	require.False(t, resumed)
+	require.Equal(t, model.WorkflowTemplate("content-review"), run.WorkflowTemplate)
+	require.Equal(t, 3, run.WorkflowVersion)
+
+	graph, err := svc.GetRunWorkGraph(ctx, run.ID)
+	require.NoError(t, err)
+	require.Equal(t, model.WorkflowTemplate("content-review"), graph.Template)
+	require.Len(t, graph.Nodes, 3)
+	require.Equal(t, model.RunNodeReady, graph.Nodes[0].Status)
+	require.Equal(t, []string{"draft"}, graph.Nodes[1].DependsOn)
+}
+
+func TestCustomWorkflowDefinitionRejectsCyclesAndMissingDefinitions(t *testing.T) {
+	ctx := service.WithActor(context.Background(), "codex")
+	svc := newSvc(t)
+	project, err := svc.CreateProject(ctx, "invalid-custom-workflow", "")
+	require.NoError(t, err)
+	task, err := svc.CreateTask(
+		ctx, project.ID, "Invalid graph", "", model.TaskTypeFeature, 2, true, nil,
+	)
+	require.NoError(t, err)
+	task, err = svc.ClaimTask(ctx, task.ID, service.ClaimOptions{Owner: "codex"})
+	require.NoError(t, err)
+
+	_, _, err = svc.StartOrResumeRun(ctx, service.StartRunInput{
+		TaskID: task.ID, AgentName: "codex", AgentTool: model.AgentToolCodex,
+		WorkflowTemplate: "unknown-flow",
+	})
+	require.ErrorContains(t, err, "workflow definition required")
+
+	_, _, err = svc.StartOrResumeRun(ctx, service.StartRunInput{
+		TaskID: task.ID, AgentName: "codex", AgentTool: model.AgentToolCodex,
+		WorkflowTemplate: "cyclic-flow",
+		WorkflowDefinition: &model.WorkflowDefinition{
+			Template: "cyclic-flow",
+			Nodes: []model.WorkflowNodeSpec{
+				{
+					Key: "first", Title: "First", Capability: "work",
+					Kind: "agent-loop", DependsOn: []string{"second"},
+				},
+				{
+					Key: "second", Title: "Second", Capability: "work",
+					Kind: "agent-loop", DependsOn: []string{"first"},
+				},
+			},
+		},
+	})
+	require.ErrorContains(t, err, "dependency cycle")
+}
+
+func TestEngineeringFlowFinalGateRequiresHumanDecisionAndInvalidatesDownstreamReceipts(t *testing.T) {
+	ctx := service.WithActor(context.Background(), "codex")
+	svc := newSvc(t)
+	project, err := svc.CreateProject(ctx, "engineering-flow-gates", "")
 	require.NoError(t, err)
 	task, err := svc.CreateTask(
 		ctx, project.ID, "Verify graph gates", "", model.TaskTypeFeature, 1, true, nil,
@@ -214,7 +299,7 @@ func TestOneFlowFinalGateRequiresHumanDecisionAndInvalidatesDownstreamReceipts(t
 	require.NoError(t, err)
 	run, _, err := svc.StartOrResumeRun(ctx, service.StartRunInput{
 		TaskID: task.ID, AgentName: "codex", AgentTool: model.AgentToolCodex,
-		WorkflowTemplate: model.WorkflowTemplateCSOneFlow,
+		WorkflowTemplate: model.WorkflowTemplateEngineeringFlow,
 	})
 	require.NoError(t, err)
 

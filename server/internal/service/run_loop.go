@@ -13,10 +13,11 @@ import (
 const maxResumeEvents = 20
 
 type StartRunInput struct {
-	TaskID           string
-	AgentName        string
-	AgentTool        model.AgentTool
-	WorkflowTemplate model.WorkflowTemplate
+	TaskID             string
+	AgentName          string
+	AgentTool          model.AgentTool
+	WorkflowTemplate   model.WorkflowTemplate
+	WorkflowDefinition *model.WorkflowDefinition
 }
 
 type SaveRunCheckpointInput struct {
@@ -54,10 +55,23 @@ func (s *Service) StartOrResumeRun(
 	if !input.AgentTool.Valid() {
 		return nil, false, fmt.Errorf("invalid agent tool %q", input.AgentTool)
 	}
-	if input.WorkflowTemplate != "" && !input.WorkflowTemplate.Valid() {
+	requestedTemplate := input.WorkflowTemplate
+	if input.WorkflowDefinition != nil {
+		if requestedTemplate != "" &&
+			input.WorkflowDefinition.Template != "" &&
+			requestedTemplate != input.WorkflowDefinition.Template {
+			return nil, false, errors.New(
+				"workflow template and definition template must match",
+			)
+		}
+		if input.WorkflowDefinition.Template != "" {
+			requestedTemplate = input.WorkflowDefinition.Template
+		}
+	}
+	if requestedTemplate != "" && !requestedTemplate.Valid() {
 		return nil, false, fmt.Errorf(
 			"invalid workflow template %q",
-			input.WorkflowTemplate,
+			requestedTemplate,
 		)
 	}
 	task, err := s.st.GetTask(ctx, input.TaskID)
@@ -76,8 +90,8 @@ func (s *Service) StartOrResumeRun(
 				active.AgentName,
 			)
 		}
-		if input.WorkflowTemplate != "" &&
-			active.WorkflowTemplate != input.WorkflowTemplate {
+		if requestedTemplate != "" &&
+			active.WorkflowTemplate != requestedTemplate {
 			return nil, false, fmt.Errorf(
 				"%w: active run uses workflow %s",
 				store.ErrConflict,
@@ -105,15 +119,22 @@ func (s *Service) StartOrResumeRun(
 	if !errors.Is(err, store.ErrNotFound) {
 		return nil, false, err
 	}
-	template := input.WorkflowTemplate
+	template := requestedTemplate
 	if template == "" {
 		template = model.WorkflowTemplateSingleLoop
+	}
+	nodes, workflowVersion, err := buildWorkflowNodes(
+		template,
+		input.WorkflowDefinition,
+	)
+	if err != nil {
+		return nil, false, err
 	}
 	run, err := s.st.CreateAgentRunWithNodes(ctx, &model.AgentRun{
 		TaskID: task.ID, ProjectID: task.ProjectID, AgentName: input.AgentName,
 		AgentTool: input.AgentTool, Status: model.RunStatusRunning,
-		WorkflowTemplate: template, WorkflowVersion: 1,
-	}, buildWorkflowNodes(template))
+		WorkflowTemplate: template, WorkflowVersion: workflowVersion,
+	}, nodes)
 	if err != nil {
 		return nil, false, err
 	}

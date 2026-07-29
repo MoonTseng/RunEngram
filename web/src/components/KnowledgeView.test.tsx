@@ -43,7 +43,7 @@ describe("KnowledgeView", () => {
             source_task_id: "task-1",
             kind: "human-correction",
             trigger: "Notion requirements need normalization",
-            guidance: "Use one-flow/notion-to-prd before PRD analysis",
+            guidance: "Use project/requirement-import before PRD analysis",
             scope: "Notion requirements",
             labels: ["notion"],
             fingerprints: ["notion-to-prd"],
@@ -96,7 +96,7 @@ describe("KnowledgeView", () => {
                 source_task_id: "task-1",
                 kind: "human-correction",
                 trigger: "Notion link unreadable",
-                guidance: "Use one-flow/notion-to-prd",
+                guidance: "Use project/requirement-import",
                 scope: "Notion requirements",
                 labels: ["notion"],
                 fingerprints: ["notion-to-prd"],
@@ -124,7 +124,7 @@ describe("KnowledgeView", () => {
     renderKnowledgeView();
 
     await user.click(await screen.findByRole("tab", { name: /Pending review/ }));
-    expect(await screen.findByText("Use one-flow/notion-to-prd")).toBeTruthy();
+    expect(await screen.findByText("Use project/requirement-import")).toBeTruthy();
     expect(screen.getAllByText("Pending review")).toHaveLength(2);
     expect(screen.getAllByText("Verified")).toHaveLength(2);
     expect(screen.getByText(/Human correction/)).toBeTruthy();
@@ -136,7 +136,7 @@ describe("KnowledgeView", () => {
     await user.click(screen.getByRole("button", { name: "Edit" }));
     const guidance = screen.getByLabelText("Reusable guidance");
     await user.clear(guidance);
-    await user.type(guidance, "Use one-flow/notion-to-prd before PRD analysis");
+    await user.type(guidance, "Use project/requirement-import before PRD analysis");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/learning-notes/note-1"),

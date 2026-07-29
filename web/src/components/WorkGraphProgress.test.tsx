@@ -5,7 +5,7 @@ import { WorkGraphProgress } from "./WorkGraphProgress";
 
 const graph: RunWorkGraph = {
   run_id: "run-1",
-  template: "cs-one-flow",
+  template: "engineering-flow",
   version: 1,
   completed_node_count: 1,
   verified_node_count: 1,
@@ -89,7 +89,8 @@ describe("WorkGraphProgress", () => {
       />
     );
 
-    expect(screen.getByText("One-flow 研发闭环")).toBeTruthy();
+    expect(screen.getByText("可恢复工作图")).toBeTruthy();
+    expect(screen.getByText("engineering-flow · v1")).toBeTruthy();
     expect(screen.getByText("需求边界已确认")).toBeTruthy();
     expect(screen.getByText("产品确认")).toBeTruthy();
     expect(screen.getByRole("link", { name: "需求说明" })).toBeTruthy();
@@ -121,7 +122,7 @@ describe("WorkGraphProgress", () => {
       />
     );
 
-    expect(legacyView.container.textContent).toContain("One-flow 研发闭环");
+    expect(legacyView.container.textContent).toContain("可恢复工作图");
     expect(
       legacyView.container.querySelector(
         'input[placeholder="输入决定或补充信息"]'

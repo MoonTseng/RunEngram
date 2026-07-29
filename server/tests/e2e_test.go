@@ -1268,17 +1268,17 @@ func TestAgentRunResumeLoopAtAPI(t *testing.T) {
 	require.NotEmpty(t, resume.RecentEvents)
 }
 
-func TestOneFlowWorkGraphAtAPI(t *testing.T) {
+func TestEngineeringFlowWorkGraphAtAPI(t *testing.T) {
 	base, stop := startServer(t)
 	defer stop()
-	token := registerAgent(t, base, "oneflow-api-agent")
+	token := registerAgent(t, base, "engineering-flow-api-agent")
 	jsonReq(t, http.MethodPost, base+"/api/v1/projects",
-		map[string]any{"name": "oneflow-api"}, &project{})
+		map[string]any{"name": "engineering-flow-api"}, &project{})
 
 	var created task
-	status := jsonReq(t, http.MethodPost, base+"/api/v1/projects/oneflow-api/tasks",
+	status := jsonReq(t, http.MethodPost, base+"/api/v1/projects/engineering-flow-api/tasks",
 		map[string]any{
-			"title": "One-flow graph API", "type": "feature", "auto_start": true,
+			"title": "Engineering graph API", "type": "feature", "auto_start": true,
 		}, &created)
 	require.Equal(t, http.StatusCreated, status)
 	status = jsonReqWithToken(t, http.MethodPost, base+"/api/v1/tasks/"+created.ID+"/claim",
@@ -1286,7 +1286,7 @@ func TestOneFlowWorkGraphAtAPI(t *testing.T) {
 	require.Equal(t, http.StatusOK, status)
 	var specDoc doc
 	status = jsonReq(t, http.MethodPost, base+"/api/v1/tasks/"+created.ID+"/docs",
-		map[string]any{"title": "Spec", "content": "# One-flow scope"}, &specDoc)
+		map[string]any{"title": "Spec", "content": "# Engineering scope"}, &specDoc)
 	require.Equal(t, http.StatusCreated, status)
 
 	var started struct {
@@ -1296,10 +1296,10 @@ func TestOneFlowWorkGraphAtAPI(t *testing.T) {
 	status = jsonReqWithToken(t, http.MethodPost, base+"/api/v1/tasks/"+created.ID+"/runs",
 		map[string]any{
 			"agent_tool":        "codex",
-			"workflow_template": "cs-one-flow",
+			"workflow_template": "engineering-flow",
 		}, &started, token)
 	require.Equal(t, http.StatusCreated, status)
-	require.Equal(t, model.WorkflowTemplateCSOneFlow, started.Run.WorkflowTemplate)
+	require.Equal(t, model.WorkflowTemplateEngineeringFlow, started.Run.WorkflowTemplate)
 
 	var graph model.RunWorkGraph
 	status = jsonReq(t, http.MethodGet, base+"/api/v1/runs/"+started.Run.ID+"/work-graph",
@@ -1369,7 +1369,7 @@ func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {
 		"source_task_id": source.ID,
 		"kind":           "human-correction",
 		"trigger":        "Notion link unreadable",
-		"guidance":       "Use one-flow/notion-to-prd",
+		"guidance":       "Use project/requirement-import",
 		"scope":          "Notion requirement analysis",
 		"labels":         []string{"notion"},
 		"fingerprints":   []string{"notion-to-prd"},
@@ -1390,7 +1390,7 @@ func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {
 
 	editBody := map[string]any{
 		"trigger":  "Notion requirements need normalization",
-		"guidance": "Use one-flow/notion-to-prd before PRD analysis",
+		"guidance": "Use project/requirement-import before PRD analysis",
 		"scope":    "Notion requirement analysis",
 	}
 	st = jsonReqWithToken(t, "PATCH", base+"/api/v1/learning-notes/"+note.ID,
@@ -1399,7 +1399,7 @@ func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {
 	st = jsonReqWithToken(t, "PATCH", base+"/api/v1/learning-notes/"+note.ID,
 		editBody, &note, ownerToken)
 	require.Equal(t, http.StatusOK, st)
-	require.Equal(t, "Use one-flow/notion-to-prd before PRD analysis", note.Guidance)
+	require.Equal(t, "Use project/requirement-import before PRD analysis", note.Guidance)
 
 	st = jsonReqWithToken(t, "POST", base+"/api/v1/learning-notes/"+note.ID+"/promote",
 		map[string]any{"evidence": ""}, nil, ownerToken)

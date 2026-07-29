@@ -159,7 +159,7 @@ export interface AgentRun {
   project_id: string;
   agent_name: string;
   agent_tool: "codex" | "claude-code" | "pi" | "other";
-  workflow_template: "single-loop" | "cs-one-flow";
+  workflow_template: string;
   workflow_version: number;
   status: "running" | "blocked" | "completed" | "failed";
   summary: string;
@@ -223,7 +223,7 @@ export interface RunInterrupt {
 
 export interface RunWorkGraph {
   run_id: string;
-  template: "single-loop" | "cs-one-flow";
+  template: string;
   version: number;
   nodes: RunNode[];
   interrupts: RunInterrupt[];

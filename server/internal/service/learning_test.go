@@ -33,7 +33,7 @@ func TestLearningNoteRequiresClaimAndPromotesOnce(t *testing.T) {
 		ProjectID: project.ID, SourceTaskID: task.ID, AgentName: "codex",
 		Kind:     model.LearningNoteHumanCorrection,
 		Trigger:  "Notion link was not readable",
-		Guidance: "Use one-flow/notion-to-prd",
+		Guidance: "Use project/requirement-import",
 		Scope:    "Notion requirements",
 		Labels:   []string{"notion"}, Fingerprints: []string{"notion-to-prd"},
 		Producer: "codex",

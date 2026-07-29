@@ -10,7 +10,7 @@ import (
 )
 
 const agentRunSelectColumns = `
-	id,task_id,project_id,agent_name,agent_tool,status,workflow_template,workflow_version,summary,next_step,
+	id,task_id,project_id,agent_name,agent_tool,status,workflow_key,workflow_version,summary,next_step,
 	started_at,updated_at,completed_at`
 
 type agentRunScanner interface {
@@ -73,14 +73,15 @@ func (s *Store) CreateAgentRunWithNodes(
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO agent_runs(
 			id,task_id,project_id,agent_name,agent_tool,status,workflow_template,
-			workflow_version,summary,next_step,started_at,updated_at,completed_at
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			workflow_key,workflow_version,summary,next_step,started_at,updated_at,completed_at
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		run.ID,
 		run.TaskID,
 		run.ProjectID,
 		run.AgentName,
 		run.AgentTool,
 		run.Status,
+		legacyWorkflowTemplate(run.WorkflowTemplate),
 		run.WorkflowTemplate,
 		run.WorkflowVersion,
 		run.Summary,
@@ -107,6 +108,15 @@ func (s *Store) CreateAgentRunWithNodes(
 		return nil, err
 	}
 	return s.GetAgentRun(ctx, run.ID)
+}
+
+func legacyWorkflowTemplate(template model.WorkflowTemplate) model.WorkflowTemplate {
+	if template == model.WorkflowTemplateSingleLoop {
+		return template
+	}
+	// Kept only to satisfy the pre-0.4 database CHECK constraint. Public API
+	// and all reads use workflow_key added by migration 0019.
+	return model.WorkflowTemplate("cs-one-flow")
 }
 
 func (s *Store) GetAgentRun(ctx context.Context, id string) (*model.AgentRun, error) {

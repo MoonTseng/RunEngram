@@ -229,17 +229,42 @@ type AgentRun struct {
 type WorkflowTemplate string
 
 const (
-	WorkflowTemplateSingleLoop WorkflowTemplate = "single-loop"
-	WorkflowTemplateCSOneFlow  WorkflowTemplate = "cs-one-flow"
+	WorkflowTemplateSingleLoop      WorkflowTemplate = "single-loop"
+	WorkflowTemplateEngineeringFlow WorkflowTemplate = "engineering-flow"
 )
 
 func (t WorkflowTemplate) Valid() bool {
-	switch t {
-	case WorkflowTemplateSingleLoop, WorkflowTemplateCSOneFlow:
-		return true
-	default:
+	value := string(t)
+	if len(value) < 1 || len(value) > 64 {
 		return false
 	}
+	for index, char := range value {
+		valid := char >= 'a' && char <= 'z' ||
+			char >= '0' && char <= '9' ||
+			char == '-'
+		if !valid || index == 0 && (char < 'a' || char > 'z') {
+			return false
+		}
+	}
+	return value[len(value)-1] != '-'
+}
+
+// WorkflowNodeSpec is the portable contract between an external workflow
+// adapter and RunEngram's durable Work Graph.
+type WorkflowNodeSpec struct {
+	Key        string   `json:"key"`
+	Title      string   `json:"title"`
+	Capability string   `json:"capability"`
+	Kind       string   `json:"kind"`
+	DependsOn  []string `json:"depends_on"`
+}
+
+// WorkflowDefinition lets any SOP describe its durable outer graph without
+// moving the SOP's inner Agent behavior into RunEngram.
+type WorkflowDefinition struct {
+	Template WorkflowTemplate   `json:"template"`
+	Version  int                `json:"version"`
+	Nodes    []WorkflowNodeSpec `json:"nodes"`
 }
 
 type RunNodeStatus string

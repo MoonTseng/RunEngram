@@ -159,11 +159,14 @@ the same ID and returns `"resumed": true`; read
 hits a real blocker; it does not drain unrelated queued work. `spec` attaches
 the `Spec` task document and stops before any source-code modification.
 
-### One-flow Work Graph
+### Workflow-neutral Work Graph
 
-Use the durable `cs-one-flow` Work Graph when the user explicitly requests
-one-flow, or when requirement/bug/refactor implementation has at least two of
-these properties:
+RunEngram does not replace a project workflow. It gives any existing SOP a
+durable outer graph while Codex, Claude Code, Pi, or another Agent keeps its
+normal reasoning/tool loop inside each node.
+
+Use the built-in `engineering-flow`, or a project-provided Workflow Adapter,
+when implementation has at least two of these properties:
 
 - it spans several sessions or is likely to suffer context loss;
 - independent analysis, implementation, verification, or review can run in
@@ -176,29 +179,27 @@ these properties:
 A task type alone does not select a graph. Keep simple features, bugs,
 refactors, mechanical changes, and all docs/research work on the default single
 loop until a matching graph template exists.
-The graph wraps an existing development SOP; it does not replace the coding
-Agent's inner loop or reimplement the project's SOP:
+The graph wraps the selected SOP:
 
 - Codex, Claude Code, Pi, or another tool owns the flexible read/edit/test loop
   inside each node.
-- `cs-sop-one-flow` owns CamScanner requirement-development conventions when
-  that skill is installed.
+- the installed project skill, command, or human playbook owns domain behavior;
 - RunEngram owns cross-session state, stage dependencies, receipts, artifacts,
   explicit human interrupts, and recovery.
 
-Start the graph after claim and context recall:
+Start the generic engineering graph after claim and context recall:
 
 ```bash
 taskline run start <task-id> --agent-tool codex \
-  --workflow cs-one-flow --format json
+  --workflow engineering-flow --format json
 taskline run graph <run-id> --format json
 ```
 
-When `cs-sop-one-flow` is available, invoke it for the actual CamScanner
-development work. Map its outputs into these durable nodes instead of creating
-a second workflow:
+When a project already has a flow, invoke it for actual work and map its
+outputs into matching durable nodes. Never reimplement that flow inside
+RunEngram:
 
-| Work Graph node | one-flow output / action |
+| Built-in node | Adapter output / action |
 | --- | --- |
 | `requirement-analysis` | PRD normalization and acceptance criteria |
 | `technical-design` | code-gap analysis and technical design |
@@ -208,6 +209,21 @@ a second workflow:
 | `verification` | focused and full test evidence |
 | `code-review` | independent review findings and fixes |
 | `final-gate` | explicit human acceptance |
+
+For a different stage model, provide a JSON Workflow Adapter:
+
+```bash
+taskline run start <task-id> --agent-tool claude-code \
+  --workflow content-review \
+  --workflow-file .runengram/workflows/content-review.json \
+  --format json
+```
+
+The file contains `template`, `version`, and 1–32 nodes. Each node defines
+`key`, `title`, `capability`, `kind`, and `depends_on`. Allowed kinds are
+`agent-loop`, `tool`, `evaluator`, and `human`. The server rejects duplicate
+keys, unknown dependencies, and cycles. See
+`examples/workflows/content-review.json`.
 
 Before work in a node, mark it `running`. On success, mark it `completed` with
 a compact result, related task-doc IDs, input fingerprint, and verification
@@ -446,7 +462,10 @@ taskline learning edit <note-id> \
 
 # Resumable Agent run
 taskline run start <task-id> --agent-tool codex
-taskline run start <task-id> --agent-tool codex --workflow cs-one-flow
+taskline run start <task-id> --agent-tool codex --workflow engineering-flow
+taskline run start <task-id> --agent-tool claude-code \
+  --workflow content-review \
+  --workflow-file .runengram/workflows/content-review.json
 taskline run graph <run-id>
 taskline run node <run-id> requirement-analysis --status completed \
   --summary "Requirement contract confirmed" --artifact-id <doc-id> \
@@ -573,7 +592,7 @@ For a tracked run, append a normalized event immediately:
 taskline run event <run-id> --kind learning.discovered \
   --summary "Recovered Notion requirement ingestion" \
   --trigger "Direct Notion requirement read failed" \
-  --guidance "Use one-flow/notion-to-prd before requirement analysis" \
+  --guidance "Use project/requirement-import before requirement analysis" \
   --scope "Notion requirement analysis"
 ```
 
@@ -598,13 +617,13 @@ taskline run event <run-id> --kind learning.discovered \
 ```
 
 Example: a user supplies a Notion requirement link. Direct reading fails, then
-the user explains that `one-flow/notion-to-prd` must normalize it first:
+the user explains that `project/requirement-import` must normalize it first:
 
 ```bash
 taskline learning capture <task-id> --project <project> \
   --kind human-correction \
   --trigger "Direct Notion requirement read failed" \
-  --guidance "Use one-flow/notion-to-prd before requirement analysis" \
+  --guidance "Use project/requirement-import before requirement analysis" \
   --scope "Notion requirement analysis" \
   --label notion --label prd --fingerprint notion-to-prd \
   --producer codex
@@ -672,9 +691,10 @@ more instructions:
    one immutable task-start snapshot and returns up to five relevant,
    verified exploration capsules from the same project. Read their `scope`
    and `evidence` before using them. Do not substitute recalled knowledge for
-   current code verification. Apply the One-flow Work Graph selection rules
-   above. Start with `--workflow cs-one-flow` only when those rules select the
-   graph; otherwise omit `--workflow`. Retain the returned `run.id`. When
+   current code verification. Apply the Work Graph selection rules above.
+   Start with `--workflow engineering-flow`, or a project Workflow Adapter,
+   only when those rules select a graph; otherwise omit `--workflow`. Retain
+   the returned `run.id`. When
    `"resumed": true`, immediately read
    `taskline task resume <id> --format json`; use its `latest_run.summary`,
    `latest_run.next_step`, and `recent_events` instead of asking the user to
@@ -693,8 +713,9 @@ installed.
 
 ### Work Graph receipt overlay
 
-Only for a run started with `--workflow cs-one-flow`, persist stage outputs as
-node receipts while following the playbook:
+For a run started with `--workflow engineering-flow`, persist stage outputs as
+node receipts while following the playbook. For a custom Workflow Adapter,
+follow its declared node keys and capability mapping:
 
 | Playbook output | Node to complete | Minimum receipt |
 | --- | --- | --- |
