@@ -1354,7 +1354,6 @@ func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {
 	base, stop := startServer(t)
 	defer stop()
 	ownerToken := registerAgent(t, base, "learning-owner")
-	otherToken := registerAgent(t, base, "learning-other")
 	jsonReq(t, "POST", base+"/api/v1/projects", map[string]any{"name": "automatic-learning-api"}, &project{})
 
 	var source task
@@ -1393,8 +1392,8 @@ func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {
 		"guidance": "Use project/requirement-import before PRD analysis",
 		"scope":    "Notion requirement analysis",
 	}
-	st = jsonReqWithToken(t, "PATCH", base+"/api/v1/learning-notes/"+note.ID,
-		editBody, &note, otherToken)
+	st = jsonReqWithHeaders(t, "PATCH", base+"/api/v1/learning-notes/"+note.ID,
+		editBody, &note, "", map[string]string{"X-Taskline-Client": "web"})
 	require.Equal(t, http.StatusOK, st)
 	st = jsonReqWithToken(t, "PATCH", base+"/api/v1/learning-notes/"+note.ID,
 		editBody, &note, ownerToken)
@@ -1405,11 +1404,11 @@ func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {
 		map[string]any{"evidence": ""}, nil, ownerToken)
 	require.Equal(t, http.StatusBadRequest, st)
 	var promoted model.LearningNote
-	st = jsonReqWithToken(t, "POST", base+"/api/v1/learning-notes/"+note.ID+"/promote",
+	st = jsonReqWithHeaders(t, "POST", base+"/api/v1/learning-notes/"+note.ID+"/promote",
 		map[string]any{
 			"evidence":     "notion-to-prd produced normalized PRD",
 			"memory_class": "project-rule",
-		}, &promoted, otherToken)
+		}, &promoted, "", map[string]string{"X-Taskline-Client": "web"})
 	require.Equal(t, http.StatusOK, st)
 	require.NotEmpty(t, promoted.CapsuleID)
 	st = jsonReqWithToken(t, "PATCH", base+"/api/v1/learning-notes/"+note.ID,
@@ -1436,8 +1435,9 @@ func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {
 	st = jsonReqWithToken(t, "POST", base+"/api/v1/projects/automatic-learning-api/learning-notes",
 		captureBody, &rejected, ownerToken)
 	require.Equal(t, http.StatusCreated, st)
-	st = jsonReqWithToken(t, "POST", base+"/api/v1/learning-notes/"+rejected.ID+"/reject",
-		map[string]any{"reason": "not general enough"}, &rejected, ownerToken)
+	st = jsonReqWithHeaders(t, "POST", base+"/api/v1/learning-notes/"+rejected.ID+"/reject",
+		map[string]any{"reason": "not general enough"}, &rejected, "",
+		map[string]string{"X-Taskline-Client": "web"})
 	require.Equal(t, http.StatusOK, st)
 	require.Equal(t, model.LearningNoteRejected, rejected.Status)
 

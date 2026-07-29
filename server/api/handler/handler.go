@@ -376,11 +376,10 @@ func (h *Handler) listLearningNotes(
 }
 
 func (h *Handler) promoteLearningNote(ctx context.Context, c *app.RequestContext) {
-	agent, ok := h.requireAgent(ctx, c)
+	ctx, actor, ok := h.requestActor(ctx, c)
 	if !ok {
 		return
 	}
-	ctx = service.WithActor(ctx, agent.Name)
 	var req promoteLearningNoteReq
 	if err := decodeJSON(c, &req); err != nil {
 		writeError(c, http.StatusBadRequest, err)
@@ -389,7 +388,7 @@ func (h *Handler) promoteLearningNote(ctx context.Context, c *app.RequestContext
 	note, err := h.svc.PromoteLearningNote(
 		ctx,
 		c.Param("id"),
-		agent.Name,
+		actor,
 		req.Evidence,
 		model.MemoryClass(req.MemoryClass),
 	)
@@ -401,17 +400,16 @@ func (h *Handler) promoteLearningNote(ctx context.Context, c *app.RequestContext
 }
 
 func (h *Handler) rejectLearningNote(ctx context.Context, c *app.RequestContext) {
-	agent, ok := h.requireAgent(ctx, c)
+	ctx, actor, ok := h.requestActor(ctx, c)
 	if !ok {
 		return
 	}
-	ctx = service.WithActor(ctx, agent.Name)
 	var req rejectLearningNoteReq
 	if err := decodeJSON(c, &req); err != nil {
 		writeError(c, http.StatusBadRequest, err)
 		return
 	}
-	note, err := h.svc.RejectLearningNote(ctx, c.Param("id"), agent.Name, req.Reason)
+	note, err := h.svc.RejectLearningNote(ctx, c.Param("id"), actor, req.Reason)
 	if err != nil {
 		writeServiceError(c, err)
 		return
@@ -420,11 +418,10 @@ func (h *Handler) rejectLearningNote(ctx context.Context, c *app.RequestContext)
 }
 
 func (h *Handler) updateLearningNote(ctx context.Context, c *app.RequestContext) {
-	agent, ok := h.requireAgent(ctx, c)
+	ctx, actor, ok := h.requestActor(ctx, c)
 	if !ok {
 		return
 	}
-	ctx = service.WithActor(ctx, agent.Name)
 	var req updateLearningNoteReq
 	if err := decodeJSON(c, &req); err != nil {
 		writeError(c, http.StatusBadRequest, err)
@@ -433,7 +430,7 @@ func (h *Handler) updateLearningNote(ctx context.Context, c *app.RequestContext)
 	note, err := h.svc.UpdateLearningNote(
 		ctx,
 		c.Param("id"),
-		agent.Name,
+		actor,
 		service.UpdateLearningNoteInput{
 			Trigger: req.Trigger, Guidance: req.Guidance, Scope: req.Scope,
 		},
@@ -1314,14 +1311,20 @@ func (h *Handler) requireAgent(ctx context.Context, c *app.RequestContext) (*mod
 }
 
 func (h *Handler) withRequestActor(ctx context.Context, c *app.RequestContext) (context.Context, bool) {
+	ctx, _, ok := h.requestActor(ctx, c)
+	return ctx, ok
+}
+
+func (h *Handler) requestActor(ctx context.Context, c *app.RequestContext) (context.Context, string, bool) {
 	agent, ok := h.optionalAgent(ctx, c)
 	if !ok {
-		return ctx, false
+		return ctx, "", false
 	}
 	if agent != nil {
-		return service.WithActor(ctx, agent.Name), true
+		return service.WithActor(ctx, agent.Name), agent.Name, true
 	}
-	return service.WithActor(ctx, requestClientActor(c)), true
+	actor := requestClientActor(c)
+	return service.WithActor(ctx, actor), actor, true
 }
 
 func requestClientActor(c *app.RequestContext) string {

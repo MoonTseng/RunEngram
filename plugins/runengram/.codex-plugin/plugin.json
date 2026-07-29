@@ -1,6 +1,6 @@
 {
   "name": "runengram",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Durable Agent work graphs and evidence-validated, reusable engineering memory.",
   "author": {
     "name": "MoonTseng",
