@@ -41,16 +41,24 @@ echo "[runengram] downloading ${archive}"
 curl -fL --retry 3 -o "${temp_dir}/${archive}" "${release_base}/${archive}"
 curl -fL --retry 3 -o "${temp_dir}/SHA256SUMS" "${release_base}/SHA256SUMS"
 
-checksum_line="$(grep -E "[[:space:]]${archive}$" "${temp_dir}/SHA256SUMS" || true)"
+checksum_line="$(
+  LC_ALL=C LANG=C grep -E "[[:space:]]${archive}$" "${temp_dir}/SHA256SUMS" || true
+)"
 [[ -n "${checksum_line}" ]] || {
   echo "Checksum entry missing for ${archive}." >&2
   exit 1
 }
-expected="$(printf '%s\n' "${checksum_line}" | awk '{print $1}')"
+expected="$(printf '%s\n' "${checksum_line}" | LC_ALL=C LANG=C awk '{print $1}')"
 if command -v shasum >/dev/null 2>&1; then
-  actual="$(shasum -a 256 "${temp_dir}/${archive}" | awk '{print $1}')"
+  actual="$(
+    LC_ALL=C LANG=C shasum -a 256 "${temp_dir}/${archive}" |
+      LC_ALL=C LANG=C awk '{print $1}'
+  )"
 elif command -v sha256sum >/dev/null 2>&1; then
-  actual="$(sha256sum "${temp_dir}/${archive}" | awk '{print $1}')"
+  actual="$(
+    LC_ALL=C LANG=C sha256sum "${temp_dir}/${archive}" |
+      LC_ALL=C LANG=C awk '{print $1}'
+  )"
 else
   echo "shasum or sha256sum is required." >&2
   exit 2
