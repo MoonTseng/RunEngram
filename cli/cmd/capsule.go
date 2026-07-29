@@ -17,7 +17,7 @@ import (
 func init() {
 	rootCmd.AddCommand(capsuleCmd)
 	capsuleCmd.AddCommand(capsuleListCmd, capsuleCreateCmd, capsuleUseCmd, capsuleArchiveCmd, capsuleMetricsCmd)
-	taskCmd.AddCommand(taskContextCmd)
+	taskCmd.AddCommand(taskContextCmd, taskRecallCmd)
 
 	for _, command := range []*cobra.Command{capsuleListCmd, capsuleCreateCmd, capsuleMetricsCmd} {
 		command.Flags().StringP("project", "p", "", "project id or name (or $TASKLINE_PROJECT)")
@@ -26,6 +26,8 @@ func init() {
 	capsuleListCmd.Flags().String("status", "active", "capsule status: active|stale|archived|all")
 
 	capsuleCreateCmd.Flags().String("source-task", "", "task that produced this knowledge")
+	capsuleCreateCmd.Flags().String("memory-class", "experience", "experience|project-rule")
+	capsuleCreateCmd.Flags().String("trigger", "", "when this knowledge should apply")
 	capsuleCreateCmd.Flags().String("title", "", "capsule title (required)")
 	capsuleCreateCmd.Flags().String("summary", "", "reusable finding (required)")
 	capsuleCreateCmd.Flags().String("scope", "", "where this finding applies")
@@ -36,6 +38,9 @@ func init() {
 	_ = capsuleCreateCmd.MarkFlagRequired("title")
 	_ = capsuleCreateCmd.MarkFlagRequired("summary")
 	_ = capsuleCreateCmd.MarkFlagRequired("evidence-file")
+
+	taskRecallCmd.Flags().String("query", "", "current action, error, or phase (required)")
+	_ = taskRecallCmd.MarkFlagRequired("query")
 
 	capsuleUseCmd.Flags().String("task", "", "task using this capsule (required)")
 	capsuleUseCmd.Flags().String("outcome", "helpful", "used|helpful|rejected|stale")
@@ -58,9 +63,32 @@ var taskContextCmd = &cobra.Command{
 			return err
 		}
 		return output.Render(os.Stdout, output.Resolve(formatFlag), snapshot, func(w io.Writer) {
-			fmt.Fprintf(w, "Task: %s\nSnapshot: %s\nSuggested capsules: %d\n",
-				snapshot.Task.Title, snapshot.ID, len(snapshot.SuggestedCapsules))
+			fmt.Fprintf(w, "Task: %s\nSnapshot: %s\nProject rules: %d\nRelevant experiences: %d\n",
+				snapshot.Task.Title, snapshot.ID, len(snapshot.ProjectRules), len(snapshot.SuggestedCapsules))
+			renderCapsuleTable(w, snapshot.ProjectRules)
 			renderCapsuleTable(w, snapshot.SuggestedCapsules)
+		})
+	},
+}
+
+var taskRecallCmd = &cobra.Command{
+	Use:   "recall <task-id>",
+	Short: "Recall verified memory for the current action, error, or phase",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if _, err := requireIdentity(); err != nil {
+			return err
+		}
+		query, _ := cmd.Flags().GetString("query")
+		recall, err := newClient().RecallTaskMemory(args[0], query)
+		if err != nil {
+			return err
+		}
+		return output.Render(os.Stdout, output.Resolve(formatFlag), recall, func(w io.Writer) {
+			fmt.Fprintf(w, "Query: %s\nProject rules: %d\nRelevant experiences: %d\n",
+				recall.Query, len(recall.ProjectRules), len(recall.SuggestedCapsules))
+			renderCapsuleTable(w, recall.ProjectRules)
+			renderCapsuleTable(w, recall.SuggestedCapsules)
 		})
 	},
 }
@@ -104,12 +132,15 @@ var capsuleCreateCmd = &cobra.Command{
 		title, _ := cmd.Flags().GetString("title")
 		summary, _ := cmd.Flags().GetString("summary")
 		scope, _ := cmd.Flags().GetString("scope")
+		memoryClass, _ := cmd.Flags().GetString("memory-class")
+		trigger, _ := cmd.Flags().GetString("trigger")
 		sourceTask, _ := cmd.Flags().GetString("source-task")
 		labels, _ := cmd.Flags().GetStringArray("label")
 		fingerprints, _ := cmd.Flags().GetStringArray("fingerprint")
 		producer, _ := cmd.Flags().GetString("producer")
 		capsule, err := newClient().CreateCapsule(project, client.CreateCapsuleInput{
-			SourceTaskID: sourceTask, Title: title, Summary: summary, Scope: scope,
+			SourceTaskID: sourceTask, MemoryClass: memoryClass, Trigger: trigger,
+			Title: title, Summary: summary, Scope: scope,
 			Evidence: string(evidence), Labels: labels, Fingerprints: fingerprints,
 			Producer: producer,
 		})
@@ -181,10 +212,10 @@ var capsuleMetricsCmd = &cobra.Command{
 
 func renderCapsuleTable(w io.Writer, capsules []client.ExplorationCapsule) {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tSTATUS\tPRODUCER\tUSES\tTITLE\tSUMMARY")
+	fmt.Fprintln(tw, "ID\tCLASS\tVALIDATION\tCONFIDENCE\tUSES\tTITLE\tSUMMARY")
 	for _, capsule := range capsules {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\n",
-			shortID(capsule.ID), capsule.Status, capsule.Producer, capsule.UseCount,
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%.0f%%\t%d\t%s\t%s\n",
+			shortID(capsule.ID), capsule.MemoryClass, capsule.Validation, capsule.Confidence*100, capsule.UseCount,
 			trimRune(capsule.Title, 32), trimRune(strings.ReplaceAll(capsule.Summary, "\n", " "), 56))
 	}
 	_ = tw.Flush()

@@ -48,9 +48,21 @@ export function MemoryList({
               )}
               <div className="min-w-0 flex-1">
                 <h3 className="font-bold leading-6">{capsule.title}</h3>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
+                  <span className="status-chip">
+                    {capsule.memory_class === "project-rule" ? t("knowledge.projectRule") : t("knowledge.scopedExperience")}
+                  </span>
+                  <span className="status-chip">
+                    {capsule.validation === "trusted"
+                      ? t("knowledge.validationTrusted")
+                      : capsule.validation === "disputed"
+                        ? t("knowledge.validationDisputed")
+                        : t("knowledge.validationVerified")}
+                  </span>
+                </div>
                 <p className="mt-1 line-clamp-2 text-sm leading-6 text-[var(--tl-ink-muted)]">{capsule.summary}</p>
                 <p className="mt-2 text-xs text-[var(--tl-ink-faint)]">
-                  {capsule.producer || "codex"} · {capsule.use_count} {t("knowledge.uses")}
+                  {Math.round(capsule.confidence * 100)}% {t("knowledge.confidence")} · {capsule.use_count} {t("knowledge.uses")}
                   {helpful === null ? "" : ` · ${helpful}% ${t("knowledge.helpful")}`}
                 </p>
               </div>

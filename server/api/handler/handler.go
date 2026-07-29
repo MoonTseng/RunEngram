@@ -65,6 +65,7 @@ func (h *Handler) Register(s *server.Hertz) {
 
 	v1.GET("/tasks/:id", h.getTask)
 	v1.GET("/tasks/:id/context", h.taskContext)
+	v1.GET("/tasks/:id/recall", h.recallTaskMemory)
 	v1.GET("/tasks/:id/resume", h.taskResumeContext)
 	v1.GET("/tasks/:id/events", h.listTaskEvents)
 	v1.GET("/tasks/:id/runs", h.listAgentRuns)
@@ -265,6 +266,8 @@ func (h *Handler) deleteProject(ctx context.Context, c *app.RequestContext) {
 
 type createCapsuleReq struct {
 	SourceTaskID string   `json:"source_task_id"`
+	MemoryClass  string   `json:"memory_class"`
+	Trigger      string   `json:"trigger"`
 	Title        string   `json:"title"`
 	Summary      string   `json:"summary"`
 	Scope        string   `json:"scope"`
@@ -275,6 +278,8 @@ type createCapsuleReq struct {
 }
 
 type updateCapsuleReq struct {
+	MemoryClass  *string   `json:"memory_class,omitempty"`
+	Trigger      *string   `json:"trigger,omitempty"`
 	Title        *string   `json:"title,omitempty"`
 	Summary      *string   `json:"summary,omitempty"`
 	Scope        *string   `json:"scope,omitempty"`
@@ -296,7 +301,8 @@ type captureLearningNoteReq struct {
 }
 
 type promoteLearningNoteReq struct {
-	Evidence string `json:"evidence"`
+	Evidence    string `json:"evidence"`
+	MemoryClass string `json:"memory_class"`
 }
 
 type rejectLearningNoteReq struct {
@@ -380,7 +386,13 @@ func (h *Handler) promoteLearningNote(ctx context.Context, c *app.RequestContext
 		writeError(c, http.StatusBadRequest, err)
 		return
 	}
-	note, err := h.svc.PromoteLearningNote(ctx, c.Param("id"), agent.Name, req.Evidence)
+	note, err := h.svc.PromoteLearningNote(
+		ctx,
+		c.Param("id"),
+		agent.Name,
+		req.Evidence,
+		model.MemoryClass(req.MemoryClass),
+	)
 	if err != nil {
 		writeServiceError(c, err)
 		return
@@ -441,6 +453,7 @@ func (h *Handler) createCapsule(ctx context.Context, c *app.RequestContext) {
 	}
 	capsule, err := h.svc.CreateCapsule(ctx, service.CreateCapsuleInput{
 		ProjectID: c.Param("project"), SourceTaskID: req.SourceTaskID,
+		MemoryClass: model.MemoryClass(req.MemoryClass), Trigger: req.Trigger,
 		Title: req.Title, Summary: req.Summary, Scope: req.Scope, Evidence: req.Evidence,
 		Labels: req.Labels, Fingerprints: req.Fingerprints, Producer: req.Producer,
 	})
@@ -462,10 +475,11 @@ func (h *Handler) listCapsules(ctx context.Context, c *app.RequestContext) {
 		limit = parsed
 	}
 	capsules, err := h.svc.ListCapsules(ctx, service.CapsuleListInput{
-		ProjectID: c.Param("project"),
-		Query:     strings.TrimSpace(string(c.Query("q"))),
-		Status:    model.CapsuleStatus(strings.TrimSpace(string(c.Query("status")))),
-		Limit:     limit,
+		ProjectID:   c.Param("project"),
+		Query:       strings.TrimSpace(string(c.Query("q"))),
+		Status:      model.CapsuleStatus(strings.TrimSpace(string(c.Query("status")))),
+		MemoryClass: model.MemoryClass(strings.TrimSpace(string(c.Query("memory_class")))),
+		Limit:       limit,
 	})
 	if err != nil {
 		writeServiceError(c, err)
@@ -494,7 +508,13 @@ func (h *Handler) updateCapsule(ctx context.Context, c *app.RequestContext) {
 		value := model.CapsuleStatus(*req.Status)
 		status = &value
 	}
+	var memoryClass *model.MemoryClass
+	if req.MemoryClass != nil {
+		value := model.MemoryClass(*req.MemoryClass)
+		memoryClass = &value
+	}
 	capsule, err := h.svc.UpdateCapsule(ctx, c.Param("id"), service.UpdateCapsuleInput{
+		MemoryClass: memoryClass, Trigger: req.Trigger,
 		Title: req.Title, Summary: req.Summary, Scope: req.Scope, Evidence: req.Evidence,
 		Labels: req.Labels, Fingerprints: req.Fingerprints, Status: status,
 	})
@@ -544,6 +564,24 @@ func (h *Handler) taskContext(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	writeJSON(c, http.StatusOK, snapshot)
+}
+
+func (h *Handler) recallTaskMemory(ctx context.Context, c *app.RequestContext) {
+	agent, ok := h.requireAgent(ctx, c)
+	if !ok {
+		return
+	}
+	recall, err := h.svc.RecallTaskMemory(
+		ctx,
+		c.Param("id"),
+		agent.Name,
+		strings.TrimSpace(string(c.Query("q"))),
+	)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	writeJSON(c, http.StatusOK, recall)
 }
 
 // ─── Task handlers ──────────────────────────────────────────────────────

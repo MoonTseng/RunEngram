@@ -47,6 +47,11 @@ func init() {
 	_ = learningEditCmd.MarkFlagRequired("guidance")
 
 	learningPromoteCmd.Flags().String("evidence-file", "", "markdown verification evidence (required)")
+	learningPromoteCmd.Flags().String(
+		"memory-class",
+		"experience",
+		"memory class: experience|project-rule",
+	)
 	_ = learningPromoteCmd.MarkFlagRequired("evidence-file")
 
 	learningRejectCmd.Flags().String("reason", "", "why candidate should not be reused (required)")
@@ -127,7 +132,8 @@ var learningPromoteCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("read evidence file: %w", err)
 		}
-		note, err := newClient().PromoteLearningNote(args[0], string(evidence))
+		memoryClass, _ := cmd.Flags().GetString("memory-class")
+		note, err := newClient().PromoteLearningNote(args[0], string(evidence), memoryClass)
 		if err != nil {
 			return err
 		}

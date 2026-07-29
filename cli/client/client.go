@@ -109,6 +109,8 @@ type ExplorationCapsule struct {
 	ID            string   `json:"id"`
 	ProjectID     string   `json:"project_id"`
 	SourceTaskID  string   `json:"source_task_id"`
+	MemoryClass   string   `json:"memory_class"`
+	Trigger       string   `json:"trigger"`
 	Title         string   `json:"title"`
 	Summary       string   `json:"summary"`
 	Scope         string   `json:"scope"`
@@ -117,6 +119,8 @@ type ExplorationCapsule struct {
 	Fingerprints  []string `json:"fingerprints"`
 	Producer      string   `json:"producer"`
 	Status        string   `json:"status"`
+	Validation    string   `json:"validation"`
+	Confidence    float64  `json:"confidence"`
 	UseCount      int      `json:"use_count"`
 	HelpfulCount  int      `json:"helpful_count"`
 	RejectedCount int      `json:"rejected_count"`
@@ -129,8 +133,18 @@ type ContextSnapshot struct {
 	TaskID            string               `json:"task_id"`
 	ProjectID         string               `json:"project_id"`
 	Task              Task                 `json:"task"`
+	ProjectRules      []ExplorationCapsule `json:"project_rules"`
 	SuggestedCapsules []ExplorationCapsule `json:"suggested_capsules"`
 	CreatedAt         int64                `json:"created_at"`
+}
+
+type MemoryRecall struct {
+	TaskID            string               `json:"task_id"`
+	ProjectID         string               `json:"project_id"`
+	Query             string               `json:"query"`
+	ProjectRules      []ExplorationCapsule `json:"project_rules"`
+	SuggestedCapsules []ExplorationCapsule `json:"suggested_capsules"`
+	RecalledAt        int64                `json:"recalled_at"`
 }
 
 type CapsuleUsage struct {
@@ -185,6 +199,8 @@ type UpdateLearningNoteInput struct {
 
 type CreateCapsuleInput struct {
 	SourceTaskID string   `json:"source_task_id,omitempty"`
+	MemoryClass  string   `json:"memory_class,omitempty"`
+	Trigger      string   `json:"trigger,omitempty"`
 	Title        string   `json:"title"`
 	Summary      string   `json:"summary"`
 	Scope        string   `json:"scope,omitempty"`
@@ -324,6 +340,16 @@ func (c *Client) GetTaskContext(taskID string) (*ContextSnapshot, error) {
 	return &out, nil
 }
 
+func (c *Client) RecallTaskMemory(taskID, query string) (*MemoryRecall, error) {
+	var out MemoryRecall
+	values := url.Values{"q": []string{query}}
+	path := "/api/v1/tasks/" + url.PathEscape(taskID) + "/recall?" + values.Encode()
+	if err := c.do("GET", path, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *Client) CaptureLearningNote(
 	projectIDOrName string,
 	in CaptureLearningNoteInput,
@@ -367,10 +393,16 @@ func (c *Client) ListLearningNotes(
 	return out.LearningNotes, nil
 }
 
-func (c *Client) PromoteLearningNote(id, evidence string) (*LearningNote, error) {
+func (c *Client) PromoteLearningNote(id, evidence string, memoryClasses ...string) (*LearningNote, error) {
 	var out LearningNote
 	path := "/api/v1/learning-notes/" + url.PathEscape(id) + "/promote"
-	if err := c.do("POST", path, map[string]string{"evidence": evidence}, &out); err != nil {
+	memoryClass := "experience"
+	if len(memoryClasses) > 0 && memoryClasses[0] != "" {
+		memoryClass = memoryClasses[0]
+	}
+	if err := c.do("POST", path, map[string]string{
+		"evidence": evidence, "memory_class": memoryClass,
+	}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

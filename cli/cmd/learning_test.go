@@ -16,8 +16,10 @@ func TestLearningCommandsRegistered(t *testing.T) {
 			t.Fatalf("learning capture --%s flag not registered", flag)
 		}
 	}
-	if learningPromoteCmd.Flags().Lookup("evidence-file") == nil {
-		t.Fatal("learning promote --evidence-file flag not registered")
+	for _, flag := range []string{"evidence-file", "memory-class"} {
+		if learningPromoteCmd.Flags().Lookup(flag) == nil {
+			t.Fatalf("learning promote --%s flag not registered", flag)
+		}
 	}
 	for _, flag := range []string{"trigger", "guidance", "scope"} {
 		if learningEditCmd.Flags().Lookup(flag) == nil {

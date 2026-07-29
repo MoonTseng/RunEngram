@@ -1394,8 +1394,8 @@ func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {
 		"scope":    "Notion requirement analysis",
 	}
 	st = jsonReqWithToken(t, "PATCH", base+"/api/v1/learning-notes/"+note.ID,
-		editBody, nil, otherToken)
-	require.Equal(t, http.StatusConflict, st)
+		editBody, &note, otherToken)
+	require.Equal(t, http.StatusOK, st)
 	st = jsonReqWithToken(t, "PATCH", base+"/api/v1/learning-notes/"+note.ID,
 		editBody, &note, ownerToken)
 	require.Equal(t, http.StatusOK, st)
@@ -1404,13 +1404,12 @@ func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {
 	st = jsonReqWithToken(t, "POST", base+"/api/v1/learning-notes/"+note.ID+"/promote",
 		map[string]any{"evidence": ""}, nil, ownerToken)
 	require.Equal(t, http.StatusBadRequest, st)
-	st = jsonReqWithToken(t, "POST", base+"/api/v1/learning-notes/"+note.ID+"/promote",
-		map[string]any{"evidence": "verified"}, nil, otherToken)
-	require.Equal(t, http.StatusConflict, st)
-
 	var promoted model.LearningNote
 	st = jsonReqWithToken(t, "POST", base+"/api/v1/learning-notes/"+note.ID+"/promote",
-		map[string]any{"evidence": "notion-to-prd produced normalized PRD"}, &promoted, ownerToken)
+		map[string]any{
+			"evidence":     "notion-to-prd produced normalized PRD",
+			"memory_class": "project-rule",
+		}, &promoted, otherToken)
 	require.Equal(t, http.StatusOK, st)
 	require.NotEmpty(t, promoted.CapsuleID)
 	st = jsonReqWithToken(t, "PATCH", base+"/api/v1/learning-notes/"+note.ID,
@@ -1455,8 +1454,16 @@ func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {
 	var snapshot model.ContextSnapshot
 	st = jsonReq(t, "GET", base+"/api/v1/tasks/"+target.ID+"/context", nil, &snapshot)
 	require.Equal(t, http.StatusOK, st)
-	require.Len(t, snapshot.SuggestedCapsules, 1)
-	require.Equal(t, promoted.CapsuleID, snapshot.SuggestedCapsules[0].ID)
+	require.Len(t, snapshot.ProjectRules, 1)
+	require.Equal(t, promoted.CapsuleID, snapshot.ProjectRules[0].ID)
+	require.Empty(t, snapshot.SuggestedCapsules)
+
+	var recall model.MemoryRecall
+	st = jsonReqWithToken(t, "GET",
+		base+"/api/v1/tasks/"+target.ID+"/recall?q=Notion+requirement+normalization",
+		nil, &recall, ownerToken)
+	require.Equal(t, http.StatusOK, st)
+	require.Len(t, recall.ProjectRules, 1)
 
 	var metrics model.LearningMetrics
 	st = jsonReq(t, "GET", base+"/api/v1/projects/automatic-learning-api/learning-metrics", nil, &metrics)

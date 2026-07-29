@@ -307,6 +307,38 @@ func TestLearningClientUsesIdentityAndStablePayload(t *testing.T) {
 	}
 }
 
+func TestRecallTaskMemoryEncodesQueryAndIdentity(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/tasks/task-1/recall" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("q"); got != "Gradle daemon failed" {
+			t.Fatalf("query = %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer token-1" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(client.MemoryRecall{
+			TaskID: "task-1",
+			SuggestedCapsules: []client.ExplorationCapsule{{
+				ID: "capsule-1", MemoryClass: "experience", Validation: "verified",
+			}},
+		})
+	}))
+	defer srv.Close()
+
+	c := client.New(srv.URL)
+	c.Token = "token-1"
+	recall, err := c.RecallTaskMemory("task-1", "Gradle daemon failed")
+	if err != nil {
+		t.Fatalf("RecallTaskMemory: %v", err)
+	}
+	if len(recall.SuggestedCapsules) != 1 || recall.SuggestedCapsules[0].ID != "capsule-1" {
+		t.Fatalf("unexpected recall: %#v", recall)
+	}
+}
+
 func TestSearchTasksClientEncodesQueryAndLimit(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

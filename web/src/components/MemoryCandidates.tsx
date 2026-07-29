@@ -1,14 +1,18 @@
 import { useState } from "react";
 import type { LearningNote } from "../lib/api";
-import type { UpdateLearningNoteInput } from "../lib/api";
+import type { MemoryClass, UpdateLearningNoteInput } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 
 export function MemoryCandidates({
   notes,
   onUpdate,
+  onPromote,
+  onReject,
 }: {
   notes: LearningNote[];
   onUpdate: (noteId: string, input: UpdateLearningNoteInput) => Promise<void>;
+  onPromote: (noteId: string, evidence: string, memoryClass: MemoryClass) => Promise<void>;
+  onReject: (noteId: string, reason: string) => Promise<void>;
 }) {
   const { t } = useI18n();
   const [editingID, setEditingID] = useState<string | null>(null);
@@ -18,6 +22,11 @@ export function MemoryCandidates({
     scope: "",
   });
   const [saving, setSaving] = useState(false);
+  const [reviewingID, setReviewingID] = useState<string | null>(null);
+  const [rejectingID, setRejectingID] = useState<string | null>(null);
+  const [memoryClass, setMemoryClass] = useState<MemoryClass>("experience");
+  const [evidence, setEvidence] = useState("");
+  const [rejectionReason, setRejectionReason] = useState("");
   const [error, setError] = useState("");
   if (notes.length === 0) {
     return <p className="py-10 text-center text-[var(--tl-ink-muted)]">{t("knowledge.noCandidates")}</p>;
@@ -100,18 +109,137 @@ export function MemoryCandidates({
             <>
               <p className="mt-4 text-sm leading-6"><strong>{t("knowledge.trigger")}:</strong> {note.trigger}</p>
               {note.scope && <p className="mt-2 text-sm text-[var(--tl-ink-muted)]"><strong>{t("knowledge.scope")}:</strong> {note.scope}</p>}
-              <button
-                type="button"
-                className="mt-4 text-sm font-semibold text-[var(--tl-primary)] hover:underline"
-                onClick={() => {
-                  setDraft({ trigger: note.trigger, guidance: note.guidance, scope: note.scope });
-                  setEditingID(note.id);
-                  setError("");
-                }}
-              >
-                {t("knowledge.edit")}
-              </button>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-[var(--tl-primary)] hover:underline"
+                  onClick={() => {
+                    setDraft({ trigger: note.trigger, guidance: note.guidance, scope: note.scope });
+                    setEditingID(note.id);
+                    setReviewingID(null);
+                    setRejectingID(null);
+                    setError("");
+                  }}
+                >
+                  {t("knowledge.edit")}
+                </button>
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-[var(--tl-primary)] hover:underline"
+                  onClick={() => {
+                    setReviewingID(note.id);
+                    setRejectingID(null);
+                    setMemoryClass("experience");
+                    setEvidence("");
+                    setError("");
+                  }}
+                >
+                  {t("knowledge.validateEnable")}
+                </button>
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-[var(--tl-rust)] hover:underline"
+                  onClick={() => {
+                    setRejectingID(note.id);
+                    setReviewingID(null);
+                    setRejectionReason("");
+                    setError("");
+                  }}
+                >
+                  {t("knowledge.rejectCandidate")}
+                </button>
+              </div>
             </>
+          )}
+          {reviewingID === note.id && (
+            <form
+              className="mt-4 space-y-3 rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-bg-quiet)] p-4"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                setSaving(true);
+                setError("");
+                try {
+                  await onPromote(note.id, evidence, memoryClass);
+                  setReviewingID(null);
+                } catch (reviewError) {
+                  setError(String(reviewError));
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              <p className="text-sm text-[var(--tl-ink-muted)]">{t("knowledge.reviewHint")}</p>
+              <label className="block text-sm font-semibold">
+                {t("knowledge.memoryClass")}
+                <select
+                  aria-label={t("knowledge.memoryClass")}
+                  value={memoryClass}
+                  onChange={(event) => setMemoryClass(event.target.value as MemoryClass)}
+                  className="mt-1 h-10 w-full rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-surface)] px-3 font-normal"
+                >
+                  <option value="experience">{t("knowledge.scopedExperience")}</option>
+                  <option value="project-rule">{t("knowledge.projectRule")}</option>
+                </select>
+              </label>
+              <label className="block text-sm font-semibold">
+                {t("knowledge.validationEvidence")}
+                <textarea
+                  aria-label={t("knowledge.validationEvidence")}
+                  required
+                  value={evidence}
+                  placeholder={t("knowledge.validationEvidenceHint")}
+                  onChange={(event) => setEvidence(event.target.value)}
+                  className="mt-1 min-h-28 w-full rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-surface)] p-3 font-normal"
+                />
+              </label>
+              {error && <p className="text-sm text-[var(--tl-rust)]">{error}</p>}
+              <div className="flex gap-2">
+                <button type="submit" className="primary-button" disabled={saving}>
+                  {saving ? t("actions.saving") : t("knowledge.confirmEnable")}
+                </button>
+                <button type="button" className="secondary-button" onClick={() => setReviewingID(null)}>
+                  {t("actions.cancel")}
+                </button>
+              </div>
+            </form>
+          )}
+          {rejectingID === note.id && (
+            <form
+              className="mt-4 space-y-3 rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-bg-quiet)] p-4"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                setSaving(true);
+                setError("");
+                try {
+                  await onReject(note.id, rejectionReason);
+                  setRejectingID(null);
+                } catch (reviewError) {
+                  setError(String(reviewError));
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              <label className="block text-sm font-semibold">
+                {t("knowledge.rejectionReason")}
+                <textarea
+                  aria-label={t("knowledge.rejectionReason")}
+                  required
+                  value={rejectionReason}
+                  onChange={(event) => setRejectionReason(event.target.value)}
+                  className="mt-1 min-h-24 w-full rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-surface)] p-3 font-normal"
+                />
+              </label>
+              {error && <p className="text-sm text-[var(--tl-rust)]">{error}</p>}
+              <div className="flex gap-2">
+                <button type="submit" className="primary-button" disabled={saving}>
+                  {saving ? t("actions.saving") : t("knowledge.confirmReject")}
+                </button>
+                <button type="button" className="secondary-button" onClick={() => setRejectingID(null)}>
+                  {t("actions.cancel")}
+                </button>
+              </div>
+            </form>
           )}
           {note.evidence && (
             <details className="mt-4 border-t border-[var(--tl-outline)] pt-3">

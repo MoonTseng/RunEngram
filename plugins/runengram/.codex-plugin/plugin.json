@@ -1,7 +1,7 @@
 {
   "name": "runengram",
-  "version": "0.4.0",
-  "description": "Durable Agent work graphs, verification evidence, and reviewed engineering memory.",
+  "version": "0.5.0",
+  "description": "Durable Agent work graphs and evidence-validated, reusable engineering memory.",
   "author": {
     "name": "MoonTseng",
     "url": "https://github.com/MoonTseng"
@@ -19,7 +19,7 @@
   "interface": {
     "displayName": "RunEngram",
     "shortDescription": "Make every verified Agent run improve the next.",
-    "longDescription": "Wrap flexible coding-agent loops in durable work graphs with stage receipts, human interrupts, verification evidence, and reviewed project memory.",
+    "longDescription": "Wrap coding-agent loops in durable work graphs, then turn verified outcomes into project rules and scoped experience with observed reuse confidence.",
     "developerName": "MoonTseng",
     "category": "Productivity",
     "capabilities": [

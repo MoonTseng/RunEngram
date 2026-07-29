@@ -19,8 +19,9 @@ the protocol also works with Claude Code or any tool that can call the CLI.
 
 > **Early alpha.** We use it locally. Resumable Agent runs, workflow-neutral
 > Work Graphs, context snapshots, stage receipts, human interrupts, learning
-> review, recall, and reuse metrics work now. Automatic conversion of
-> experience into enforced project rules is not implemented.
+> review, layered recall, and observed reuse validation work now. Developers
+> decide which reviewed candidates are project rules and which are scoped
+> experience; RunEngram never turns a guess into a rule by itself.
 
 ![RunEngram Work Graph](./docs/assets/runengram-work-graph.jpg)
 
@@ -161,6 +162,10 @@ Sources: [GitHub Copilot Memory](https://docs.github.com/en/copilot/concepts/age
 - Action Console, Kanban, dependency graph, and engineering-memory views.
 - English and Simplified Chinese UI; Dracula is the default theme.
 - A fixed context snapshot when an agent starts a task.
+- Reviewed memory has two layers: project rules with a dedicated per-task
+  budget and relevance-loaded scoped experience.
+- Recall uses a context budget rather than a fixed five-item limit. Agents can
+  query memory again when implementation reveals a new module, error, or tool.
 - Project findings with source task, scope, evidence, code fingerprints, and
   producer (`codex`, `claude-code`, or another tool).
 - Learning candidates for human corrections and successful recovery paths.
@@ -182,8 +187,10 @@ compatibility. They will be renamed before 1.0.
 3. A durable project convention, human correction, or successful recovery can
    create a pending learning candidate.
 4. A developer can edit its trigger, guidance, and scope.
-5. The candidate needs concrete evidence before promotion into project memory.
+5. The candidate needs concrete evidence and a memory class before promotion:
+   a project rule applies broadly; scoped experience is retrieved by relevance.
 6. Later tasks record whether recalled memory helped, was rejected, or stale.
+   Feedback from distinct tasks changes its confidence and validation state.
 
 RunEngram does not copy whole chat transcripts. It does not store secrets,
 tokens, hidden reasoning, or unreviewed guesses. Only reviewed entries are
@@ -203,6 +210,22 @@ recalled by later tasks.
 The active-task screen shows a **Learning receipt**. Project Knowledge shows
 pending candidates, their source task, and an edit action. Pending candidates
 never affect another run.
+
+### How memory earns trust
+
+| State | Meaning | Effect |
+| --- | --- | --- |
+| Pending candidate | Useful-looking conclusion without review | Never recalled |
+| Verified | Developer supplied concrete evidence and enabled it | Available to later tasks |
+| Trusted | Helpful in at least two task-level reuse observations | Ranked above equally relevant unproven experience |
+| Disputed | Rejected more often than it helped, with at least two negative observations | Kept visible for correction, excluded from recall |
+| Stale | Current code or tooling disproved it | Excluded from recall |
+
+One task can update one outcome per memory item, so repeatedly clicking
+“helpful” in the same task cannot manufacture trust. Review starts at 0.60,
+helpful reuse adds 0.10, rejection subtracts 0.15, and stale memory drops to
+zero. This is confidence in observed reuse, not a claim that RunEngram measured
+hours saved.
 
 ## Install as a Codex plugin
 
@@ -368,11 +391,14 @@ taskline learning edit <learning-note-id> \
   --guidance "Use 7.23.0_feat/<english-requirement-name>" \
   --scope "Feature branches"
 taskline learning promote <learning-note-id> \
+  --memory-class project-rule \
   --evidence-file ./verified-learning.md
 taskline learning reject <learning-note-id> \
   --reason "One-off environment issue; not reusable"
 taskline capsule list --project your-project --query webview
+taskline task recall <task-id> --query "Gradle daemon failed in three modules"
 taskline capsule create --project your-project --source-task <task-id> \
+  --memory-class experience --trigger "Deleting a compatibility service" \
   --title "Reusable boundary" --summary "Verified finding" \
   --scope "Affected module" --evidence-file ./evidence.md \
   --fingerprint module-name --producer codex

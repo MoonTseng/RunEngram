@@ -47,9 +47,7 @@ func TestLearningNoteRequiresClaimAndPromotesOnce(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, model.LearningNotePending, note.Status)
 
-	_, err = svc.PromoteLearningNote(ctx, note.ID, "other-agent", "verified")
-	require.ErrorIs(t, err, store.ErrConflict)
-	first, err := svc.PromoteLearningNote(ctx, note.ID, "codex", "notion-to-prd produced the PRD; tests passed")
+	first, err := svc.PromoteLearningNote(ctx, note.ID, "other-agent", "notion-to-prd produced the PRD; tests passed")
 	require.NoError(t, err)
 	second, err := svc.PromoteLearningNote(ctx, note.ID, "codex", "same retry")
 	require.NoError(t, err)
@@ -103,10 +101,10 @@ func TestPendingLearningNoteCanBeCorrectedBeforePromotion(t *testing.T) {
 	require.Equal(t, "Name branch 7.23.0_feat/<english-requirement-name>", updated.Guidance)
 	require.Equal(t, "CamScanner feature branches", updated.Scope)
 
-	_, err = svc.UpdateLearningNote(ctx, note.ID, "other-agent", service.UpdateLearningNoteInput{
-		Trigger: "wrong", Guidance: "wrong",
+	_, err = svc.UpdateLearningNote(ctx, note.ID, "reviewer", service.UpdateLearningNoteInput{
+		Trigger: updated.Trigger, Guidance: updated.Guidance, Scope: updated.Scope,
 	})
-	require.ErrorIs(t, err, store.ErrConflict)
+	require.NoError(t, err)
 	_, err = svc.PromoteLearningNote(ctx, note.ID, "codex", "Branch created and verified")
 	require.NoError(t, err)
 	_, err = svc.UpdateLearningNote(ctx, note.ID, "codex", service.UpdateLearningNoteInput{
@@ -138,9 +136,7 @@ func TestLearningNoteRejectionAndExpiredClaimGuards(t *testing.T) {
 
 	_, err = svc.RejectLearningNote(ctx, note.ID, "codex", "")
 	require.Error(t, err)
-	_, err = svc.RejectLearningNote(ctx, note.ID, "other-agent", "not reusable")
-	require.ErrorIs(t, err, store.ErrConflict)
-	first, err := svc.RejectLearningNote(ctx, note.ID, "codex", "not reusable")
+	first, err := svc.RejectLearningNote(ctx, note.ID, "reviewer", "not reusable")
 	require.NoError(t, err)
 	second, err := svc.RejectLearningNote(ctx, note.ID, "codex", "retry")
 	require.NoError(t, err)
@@ -250,4 +246,193 @@ func TestTaskContextRequiresClaimAndUsageCannotCrossProjects(t *testing.T) {
 	stale, err := svc.GetCapsule(ctx, capsule.ID)
 	require.NoError(t, err)
 	require.Equal(t, model.CapsuleStatusStale, stale.Status)
+}
+
+func TestContextSeparatesProjectRulesAndUsesAdaptiveExperienceBudget(t *testing.T) {
+	ctx := context.Background()
+	svc := newSvc(t)
+	project, err := svc.CreateProject(ctx, "layered-memory", "")
+	require.NoError(t, err)
+
+	rule, err := svc.CreateCapsule(ctx, service.CreateCapsuleInput{
+		ProjectID:   project.ID,
+		Title:       "Branch naming policy",
+		Trigger:     "Before creating a feature branch",
+		Summary:     "Use release_feat/english-name for feature branches",
+		Scope:       "All feature work",
+		Evidence:    "Repository branch policy verified by maintainer.",
+		MemoryClass: model.MemoryClassProjectRule,
+	})
+	require.NoError(t, err)
+
+	for i := 0; i < 12; i++ {
+		_, err = svc.CreateCapsule(ctx, service.CreateCapsuleInput{
+			ProjectID:   project.ID,
+			Title:       "WebView migration experience",
+			Trigger:     "When migrating WebView service callers",
+			Summary:     "Enumerate WebView callers before deleting compatibility service",
+			Scope:       "WebView module migration",
+			Evidence:    "Caller inventory and module compilation passed.",
+			Labels:      []string{"webview"},
+			MemoryClass: model.MemoryClassExperience,
+		})
+		require.NoError(t, err)
+	}
+
+	task, err := svc.CreateTask(
+		ctx,
+		project.ID,
+		"Migrate WebView URL service",
+		"Move callers across WebView modules",
+		model.TaskTypeFeature,
+		1,
+		true,
+		[]string{"webview"},
+	)
+	require.NoError(t, err)
+	_, err = svc.ClaimTask(ctx, task.ID, service.ClaimOptions{Owner: "codex"})
+	require.NoError(t, err)
+
+	snapshot, err := svc.GetOrCreateTaskContext(ctx, task.ID)
+	require.NoError(t, err)
+	require.Len(t, snapshot.ProjectRules, 1)
+	require.Equal(t, rule.ID, snapshot.ProjectRules[0].ID)
+	require.Greater(t, len(snapshot.SuggestedCapsules), 5)
+	require.LessOrEqual(t, len(snapshot.SuggestedCapsules), 20)
+}
+
+func TestDynamicRecallFindsExperienceAfterTaskStart(t *testing.T) {
+	ctx := context.Background()
+	svc := newSvc(t)
+	project, err := svc.CreateProject(ctx, "dynamic-recall", "")
+	require.NoError(t, err)
+	capsule, err := svc.CreateCapsule(ctx, service.CreateCapsuleInput{
+		ProjectID:   project.ID,
+		Title:       "Gradle multi-module recovery",
+		Trigger:     "Gradle daemon fails during multi-module compilation",
+		Summary:     "Compile modules serially with daemon and parallelism disabled",
+		Scope:       "Android multi-module verification",
+		Evidence:    "Three affected modules compiled successfully.",
+		MemoryClass: model.MemoryClassExperience,
+	})
+	require.NoError(t, err)
+
+	task, err := svc.CreateTask(ctx, project.ID, "Refactor services", "", model.TaskTypeFeature, 1, true, nil)
+	require.NoError(t, err)
+	_, err = svc.ClaimTask(ctx, task.ID, service.ClaimOptions{Owner: "codex"})
+	require.NoError(t, err)
+
+	snapshot, err := svc.GetOrCreateTaskContext(ctx, task.ID)
+	require.NoError(t, err)
+	require.Empty(t, snapshot.SuggestedCapsules)
+
+	recall, err := svc.RecallTaskMemory(ctx, task.ID, "codex", "Gradle daemon multi-module compilation failed")
+	require.NoError(t, err)
+	require.Len(t, recall.SuggestedCapsules, 1)
+	require.Equal(t, capsule.ID, recall.SuggestedCapsules[0].ID)
+}
+
+func TestVerifiedExperienceBecomesTrustedThroughHelpfulReuse(t *testing.T) {
+	ctx := context.Background()
+	svc := newSvc(t)
+	project, err := svc.CreateProject(ctx, "memory-confidence", "")
+	require.NoError(t, err)
+	capsule, err := svc.CreateCapsule(ctx, service.CreateCapsuleInput{
+		ProjectID:   project.ID,
+		Title:       "Verified recovery",
+		Trigger:     "Known build failure appears",
+		Summary:     "Use verified recovery command",
+		Evidence:    "Recovery command passed on source task.",
+		MemoryClass: model.MemoryClassExperience,
+	})
+	require.NoError(t, err)
+	require.Equal(t, model.MemoryValidationVerified, capsule.Validation)
+	initialConfidence := capsule.Confidence
+
+	for _, title := range []string{"First reuse", "Second reuse"} {
+		task, createErr := svc.CreateTask(ctx, project.ID, title, "", model.TaskTypeBug, 1, true, nil)
+		require.NoError(t, createErr)
+		_, createErr = svc.RecordCapsuleUsage(ctx, service.RecordUsageInput{
+			CapsuleID: capsule.ID,
+			TaskID:    task.ID,
+			Outcome:   model.CapsuleOutcomeHelpful,
+			Notes:     "Current code and verification confirmed guidance.",
+		})
+		require.NoError(t, createErr)
+	}
+
+	trusted, err := svc.GetCapsule(ctx, capsule.ID)
+	require.NoError(t, err)
+	require.Equal(t, model.MemoryValidationTrusted, trusted.Validation)
+	require.Greater(t, trusted.Confidence, initialConfidence)
+}
+
+func TestDisputedExperienceIsExcludedFromAutomaticRecall(t *testing.T) {
+	ctx := context.Background()
+	svc := newSvc(t)
+	project, err := svc.CreateProject(ctx, "disputed-memory", "")
+	require.NoError(t, err)
+	capsule, err := svc.CreateCapsule(ctx, service.CreateCapsuleInput{
+		ProjectID: project.ID, Title: "Legacy Gradle recovery",
+		Trigger: "Gradle daemon failed", Summary: "Delete every Gradle cache",
+		Scope: "Android builds", Evidence: "Worked on one old checkout",
+	})
+	require.NoError(t, err)
+
+	for _, title := range []string{"First failed reuse", "Second failed reuse"} {
+		task, createErr := svc.CreateTask(ctx, project.ID, title, "Gradle daemon failed", model.TaskTypeBug, 1, true, nil)
+		require.NoError(t, createErr)
+		_, createErr = svc.RecordCapsuleUsage(ctx, service.RecordUsageInput{
+			CapsuleID: capsule.ID, TaskID: task.ID, Outcome: model.CapsuleOutcomeRejected,
+			Notes: "Current build disproved this route",
+		})
+		require.NoError(t, createErr)
+	}
+
+	target, err := svc.CreateTask(ctx, project.ID, "Another Gradle failure", "Gradle daemon failed", model.TaskTypeBug, 1, true, nil)
+	require.NoError(t, err)
+	_, err = svc.ClaimTask(ctx, target.ID, service.ClaimOptions{Owner: "codex"})
+	require.NoError(t, err)
+	snapshot, err := svc.GetOrCreateTaskContext(ctx, target.ID)
+	require.NoError(t, err)
+	require.Empty(t, snapshot.SuggestedCapsules)
+
+	refreshed, err := svc.GetCapsule(ctx, capsule.ID)
+	require.NoError(t, err)
+	require.Equal(t, model.MemoryValidationDisputed, refreshed.Validation)
+}
+
+func TestReviewerCanPromoteExpiredCandidateAsProjectRule(t *testing.T) {
+	ctx := context.Background()
+	svc := newSvc(t)
+	project, err := svc.CreateProject(ctx, "platform-review", "")
+	require.NoError(t, err)
+	task, err := svc.CreateTask(ctx, project.ID, "Capture branch policy", "", model.TaskTypeFeature, 1, true, nil)
+	require.NoError(t, err)
+	_, err = svc.ClaimTask(ctx, task.ID, service.ClaimOptions{Owner: "codex", Lease: time.Millisecond})
+	require.NoError(t, err)
+	note, err := svc.CaptureLearningNote(ctx, service.CaptureLearningNoteInput{
+		ProjectID:    project.ID,
+		SourceTaskID: task.ID,
+		AgentName:    "codex",
+		Kind:         model.LearningNoteHumanCorrection,
+		Trigger:      "Before creating a feature branch",
+		Guidance:     "Use release_feat/english-name",
+		Scope:        "All feature work",
+	})
+	require.NoError(t, err)
+	time.Sleep(5 * time.Millisecond)
+
+	promoted, err := svc.PromoteLearningNote(
+		ctx,
+		note.ID,
+		"maintainer",
+		"Maintainer checked repository branch policy.",
+		model.MemoryClassProjectRule,
+	)
+	require.NoError(t, err)
+	capsule, err := svc.GetCapsule(ctx, promoted.CapsuleID)
+	require.NoError(t, err)
+	require.Equal(t, model.MemoryClassProjectRule, capsule.MemoryClass)
+	require.Equal(t, note.Trigger, capsule.Trigger)
 }

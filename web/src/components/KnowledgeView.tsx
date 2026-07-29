@@ -5,6 +5,8 @@ import {
   getLearningMetrics,
   listCapsules,
   listLearningNotes,
+  promoteLearningNote,
+  rejectLearningNote,
   updateLearningNote,
   type CapsuleStatus,
   type ExplorationCapsule,
@@ -113,6 +115,14 @@ export function KnowledgeView({ project }: { project: Project }) {
                 onUpdate={async (noteID: string, input: UpdateLearningNoteInput) => {
                   await updateLearningNote(noteID, input);
                   await notes.refetch();
+                }}
+                onPromote={async (noteID, evidence, memoryClass) => {
+                  await promoteLearningNote(noteID, evidence, memoryClass);
+                  await Promise.all([notes.refetch(), metrics.refetch(), capsules.refetch()]);
+                }}
+                onReject={async (noteID, reason) => {
+                  await rejectLearningNote(noteID, reason);
+                  await Promise.all([notes.refetch(), metrics.refetch()]);
                 }}
               />
             )}

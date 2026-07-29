@@ -321,24 +321,30 @@ human correction / successful recovery
                          future same-project recall
 ```
 
-Only the live owner of the source task may capture, promote, or reject its
-learning notes. The same owner may edit a pending candidate before review.
+Only the live owner of the source task may capture a learning note. Any
+authenticated workspace Agent may edit, promote, or reject a pending candidate,
+so review still works after the source lease expires. Permission roles remain
+outside the current single-user/local alpha.
 Capture accepts structured `trigger`, `guidance`, `scope`,
 labels, fingerprints, and producer fields; raw conversations, secrets, and
 hidden reasoning are outside the contract.
 
-Promotion requires non-empty verification evidence. One store transaction
+Promotion requires non-empty verification evidence and assigns either
+`project-rule` or `experience`. One store transaction
 updates the pending note and creates its Exploration Capsule together,
 preventing a promoted note without recallable knowledge. Repeating promotion
 is idempotent: the existing capsule is returned and no duplicate is created.
 Reject records a reason and never creates a capsule.
 
 Pending and rejected notes remain visible for audit and metrics but are never
-injected into task context. Recall continues to use active Exploration
-Capsules only. The public skill drives capture at high-signal execution
+injected into task context. Active project rules use a separate per-task
+budget without relevance filtering. Active experience is ranked by task text, labels, fingerprints, scope,
+trigger, confidence, and observed reuse, then fitted to a context budget.
+Agents can perform dynamic recall when new execution context appears without
+mutating the immutable task-start snapshot. The public skill drives capture at high-signal execution
 moments and resolves candidates after test evidence exists; the server
-enforces ownership, status, evidence, and atomicity independently of any agent
-tool.
+enforces capture ownership, review authentication, status, evidence, and
+atomicity independently of any agent tool.
 
 Automatic capture is deliberately narrow. Explicit reusable project
 conventions, human corrections that change execution, and verified recovery

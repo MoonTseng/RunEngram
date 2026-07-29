@@ -75,6 +75,9 @@ var schemaRunInterruptGuards string
 //go:embed schema/0019_generic_workflows.sql
 var schemaGenericWorkflows string
 
+//go:embed schema/0020_layered_memory.sql
+var schemaLayeredMemory string
+
 // schemaMigrations defines the canonical migration set, keyed by
 // monotonically increasing version. We track the last-applied version in
 // SQLite's built-in `PRAGMA user_version` and only run migrations whose
@@ -106,6 +109,7 @@ var schemaMigrations = []migration{
 	{version: 17, sql: schemaWorkGraph},
 	{version: 18, sql: schemaRunInterruptGuards},
 	{version: 19, sql: schemaGenericWorkflows},
+	{version: 20, sql: schemaLayeredMemory},
 }
 
 // ErrNotFound is returned when a lookup misses.
@@ -1902,6 +1906,7 @@ func (s *Store) PromoteLearningNote(
 	ctx context.Context,
 	id string,
 	evidence string,
+	memoryClasses ...model.MemoryClass,
 ) (*model.LearningNote, *model.ExplorationCapsule, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1923,6 +1928,13 @@ func (s *Store) PromoteLearningNote(
 	case model.LearningNoteRejected:
 		return nil, nil, fmt.Errorf("%w: rejected learning note cannot be promoted", ErrConflict)
 	}
+	memoryClass := model.MemoryClassExperience
+	if len(memoryClasses) > 0 && memoryClasses[0] != "" {
+		memoryClass = memoryClasses[0]
+	}
+	if !memoryClass.Valid() {
+		return nil, nil, fmt.Errorf("invalid memory class %q", memoryClass)
+	}
 
 	title := strings.TrimSpace(note.Guidance)
 	if utf8.RuneCountInString(title) > 120 {
@@ -1935,6 +1947,8 @@ func (s *Store) PromoteLearningNote(
 		ID:           newID(),
 		ProjectID:    note.ProjectID,
 		SourceTaskID: note.SourceTaskID,
+		MemoryClass:  memoryClass,
+		Trigger:      note.Trigger,
 		Title:        title,
 		Summary:      note.Guidance,
 		Scope:        note.Scope,
@@ -1948,10 +1962,10 @@ func (s *Store) PromoteLearningNote(
 	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO exploration_capsules(
-			id,project_id,source_task_id,title,summary,scope,evidence,labels,fingerprints,
+			id,project_id,source_task_id,memory_class,trigger,title,summary,scope,evidence,labels,fingerprints,
 			producer,status,created_at,updated_at
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		capsule.ID, capsule.ProjectID, capsule.SourceTaskID, capsule.Title, capsule.Summary,
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		capsule.ID, capsule.ProjectID, capsule.SourceTaskID, capsule.MemoryClass, capsule.Trigger, capsule.Title, capsule.Summary,
 		capsule.Scope, capsule.Evidence, labelsJSON, fingerprintsJSON, capsule.Producer,
 		capsule.Status, capsule.CreatedAt, capsule.UpdatedAt,
 	)
@@ -2169,13 +2183,16 @@ func getCapsuleTx(ctx context.Context, tx *sql.Tx, id string) (*model.Exploratio
 
 // CapsuleFilter narrows project knowledge reads.
 type CapsuleFilter struct {
-	ProjectID string
-	Query     string
-	Status    model.CapsuleStatus
-	Limit     int
+	ProjectID   string
+	Query       string
+	Status      model.CapsuleStatus
+	MemoryClass model.MemoryClass
+	Limit       int
 }
 
 type CapsuleUpdate struct {
+	MemoryClass  *model.MemoryClass
+	Trigger      *string
 	Title        *string
 	Summary      *string
 	Scope        *string
@@ -2215,6 +2232,13 @@ func (s *Store) CreateCapsule(ctx context.Context, capsule *model.ExplorationCap
 	if capsule.Status == "" {
 		capsule.Status = model.CapsuleStatusActive
 	}
+	if capsule.MemoryClass == "" {
+		capsule.MemoryClass = model.MemoryClassExperience
+	}
+	if !capsule.MemoryClass.Valid() {
+		return fmt.Errorf("invalid memory class %q", capsule.MemoryClass)
+	}
+	capsule.Trigger = strings.TrimSpace(capsule.Trigger)
 	if strings.TrimSpace(capsule.Producer) == "" {
 		capsule.Producer = "codex"
 	}
@@ -2222,9 +2246,9 @@ func (s *Store) CreateCapsule(ctx context.Context, capsule *model.ExplorationCap
 	capsule.UpdatedAt = capsule.CreatedAt
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO exploration_capsules(
-			id,project_id,source_task_id,title,summary,scope,evidence,labels,fingerprints,producer,status,created_at,updated_at
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		capsule.ID, capsule.ProjectID, capsule.SourceTaskID, capsule.Title, capsule.Summary,
+			id,project_id,source_task_id,memory_class,trigger,title,summary,scope,evidence,labels,fingerprints,producer,status,created_at,updated_at
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		capsule.ID, capsule.ProjectID, capsule.SourceTaskID, capsule.MemoryClass, capsule.Trigger, capsule.Title, capsule.Summary,
 		capsule.Scope, capsule.Evidence, labelsJSON, fingerprintsJSON, capsule.Producer, capsule.Status,
 		capsule.CreatedAt, capsule.UpdatedAt,
 	)
@@ -2249,10 +2273,14 @@ func (s *Store) ListCapsules(ctx context.Context, filter CapsuleFilter) ([]model
 		query += ` AND c.status = ?`
 		args = append(args, filter.Status)
 	}
+	if filter.MemoryClass != "" {
+		query += ` AND c.memory_class = ?`
+		args = append(args, filter.MemoryClass)
+	}
 	if q := strings.TrimSpace(filter.Query); q != "" {
-		query += ` AND (LOWER(c.title) LIKE LOWER(?) OR LOWER(c.summary) LIKE LOWER(?) OR LOWER(c.scope) LIKE LOWER(?) OR LOWER(c.labels) LIKE LOWER(?) OR LOWER(c.fingerprints) LIKE LOWER(?))`
+		query += ` AND (LOWER(c.trigger) LIKE LOWER(?) OR LOWER(c.title) LIKE LOWER(?) OR LOWER(c.summary) LIKE LOWER(?) OR LOWER(c.scope) LIKE LOWER(?) OR LOWER(c.labels) LIKE LOWER(?) OR LOWER(c.fingerprints) LIKE LOWER(?))`
 		like := "%" + q + "%"
-		args = append(args, like, like, like, like, like)
+		args = append(args, like, like, like, like, like, like)
 	}
 	query += ` GROUP BY c.id ORDER BY c.updated_at DESC, c.id ASC`
 	if filter.Limit > 0 {
@@ -2283,6 +2311,15 @@ func (s *Store) UpdateCapsule(ctx context.Context, id string, update CapsuleUpda
 	if update.Title != nil {
 		current.Title = *update.Title
 	}
+	if update.MemoryClass != nil {
+		if !update.MemoryClass.Valid() {
+			return nil, fmt.Errorf("invalid memory class %q", *update.MemoryClass)
+		}
+		current.MemoryClass = *update.MemoryClass
+	}
+	if update.Trigger != nil {
+		current.Trigger = strings.TrimSpace(*update.Trigger)
+	}
 	if update.Summary != nil {
 		current.Summary = *update.Summary
 	}
@@ -2312,9 +2349,9 @@ func (s *Store) UpdateCapsule(ctx context.Context, id string, update CapsuleUpda
 	updatedAt := now()
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE exploration_capsules
-		   SET title=?,summary=?,scope=?,evidence=?,labels=?,fingerprints=?,status=?,updated_at=?
+		   SET memory_class=?,trigger=?,title=?,summary=?,scope=?,evidence=?,labels=?,fingerprints=?,status=?,updated_at=?
 		 WHERE id=?`,
-		current.Title, current.Summary, current.Scope, current.Evidence, labelsJSON,
+		current.MemoryClass, current.Trigger, current.Title, current.Summary, current.Scope, current.Evidence, labelsJSON,
 		fingerprintsJSON, current.Status, updatedAt, id)
 	if err != nil {
 		return nil, err
@@ -2435,7 +2472,7 @@ func (s *Store) GetLearningMetrics(ctx context.Context, projectID string) (*mode
 }
 
 const capsuleSelectSQL = `
-	SELECT c.id,c.project_id,c.source_task_id,c.title,c.summary,c.scope,c.evidence,
+	SELECT c.id,c.project_id,c.source_task_id,c.memory_class,c.trigger,c.title,c.summary,c.scope,c.evidence,
 	       c.labels,c.fingerprints,c.producer,c.status,c.created_at,c.updated_at,
 	       COUNT(u.id),
 	       SUM(CASE WHEN u.outcome='helpful' THEN 1 ELSE 0 END),
@@ -2452,7 +2489,7 @@ func scanCapsule(scanner capsuleScanner) (*model.ExplorationCapsule, error) {
 	var labelsJSON, fingerprintsJSON string
 	var helpful, rejected sql.NullInt64
 	err := scanner.Scan(
-		&capsule.ID, &capsule.ProjectID, &capsule.SourceTaskID, &capsule.Title,
+		&capsule.ID, &capsule.ProjectID, &capsule.SourceTaskID, &capsule.MemoryClass, &capsule.Trigger, &capsule.Title,
 		&capsule.Summary, &capsule.Scope, &capsule.Evidence, &labelsJSON,
 		&fingerprintsJSON, &capsule.Producer, &capsule.Status, &capsule.CreatedAt, &capsule.UpdatedAt,
 		&capsule.UseCount, &helpful, &rejected,
@@ -2473,5 +2510,26 @@ func scanCapsule(scanner capsuleScanner) (*model.ExplorationCapsule, error) {
 	}
 	capsule.HelpfulCount = int(helpful.Int64)
 	capsule.RejectedCount = int(rejected.Int64)
+	capsule.Validation, capsule.Confidence = memoryValidation(capsule)
 	return &capsule, nil
+}
+
+func memoryValidation(capsule model.ExplorationCapsule) (model.MemoryValidation, float64) {
+	if capsule.Status == model.CapsuleStatusStale {
+		return model.MemoryValidationStale, 0
+	}
+	confidence := 0.6 + 0.1*float64(capsule.HelpfulCount) - 0.15*float64(capsule.RejectedCount)
+	if confidence < 0 {
+		confidence = 0
+	}
+	if confidence > 1 {
+		confidence = 1
+	}
+	if capsule.RejectedCount > capsule.HelpfulCount && capsule.RejectedCount >= 2 {
+		return model.MemoryValidationDisputed, confidence
+	}
+	if capsule.HelpfulCount >= 2 && confidence >= 0.75 {
+		return model.MemoryValidationTrusted, confidence
+	}
+	return model.MemoryValidationVerified, confidence
 }

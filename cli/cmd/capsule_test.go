@@ -18,7 +18,10 @@ func TestCapsuleWorkflowCommandsRegistered(t *testing.T) {
 	if findCommand(taskCmd, "context") == nil {
 		t.Fatal("task context command not registered")
 	}
-	for _, flag := range []string{"producer", "evidence-file"} {
+	if findCommand(taskCmd, "recall") == nil {
+		t.Fatal("task recall command not registered")
+	}
+	for _, flag := range []string{"producer", "evidence-file", "memory-class", "trigger"} {
 		if capsuleCreateCmd.Flags().Lookup(flag) == nil {
 			t.Fatalf("capsule create --%s flag not registered", flag)
 		}

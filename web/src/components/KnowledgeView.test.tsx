@@ -35,6 +35,30 @@ describe("KnowledgeView", () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes("/learning-notes/note-1/promote") && init?.method === "POST") {
+        return new Response(
+          JSON.stringify({
+            id: "note-1",
+            project_id: project.id,
+            source_task_id: "task-1",
+            kind: "human-correction",
+            trigger: "Notion requirements need normalization",
+            guidance: "Use project/requirement-import before PRD analysis",
+            scope: "Notion requirements",
+            labels: ["notion"],
+            fingerprints: ["notion-to-prd"],
+            producer: "codex",
+            status: "promoted",
+            evidence: "Maintainer verified requirement import output.",
+            capsule_id: "capsule-1",
+            rejection_reason: "",
+            created_at: 1785220000000,
+            updated_at: 1785220002000,
+            resolved_at: 1785220002000,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
       if (url.includes("/learning-notes/note-1") && init?.method === "PATCH") {
         return new Response(
           JSON.stringify({
@@ -141,6 +165,21 @@ describe("KnowledgeView", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/learning-notes/note-1"),
       expect.objectContaining({ method: "PATCH" })
+    );
+
+    await user.click(screen.getByRole("button", { name: "Validate & enable" }));
+    await user.selectOptions(screen.getByLabelText("Memory type"), "project-rule");
+    await user.type(
+      screen.getByLabelText("Validation evidence"),
+      "Maintainer verified requirement import output."
+    );
+    await user.click(screen.getByRole("button", { name: "Confirm enable" }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/learning-notes/note-1/promote"),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"memory_class":"project-rule"'),
+      })
     );
   });
 });

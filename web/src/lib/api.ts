@@ -95,6 +95,8 @@ export interface TaskEvent {
 }
 
 export type CapsuleStatus = "active" | "stale" | "archived";
+export type MemoryClass = "experience" | "project-rule";
+export type MemoryValidation = "verified" | "trusted" | "disputed" | "stale";
 
 export type LearningNoteKind = "human-correction" | "agent-recovery";
 export type LearningNoteStatus = "pending" | "promoted" | "rejected";
@@ -129,6 +131,8 @@ export interface ExplorationCapsule {
   id: string;
   project_id: string;
   source_task_id: string;
+  memory_class: MemoryClass;
+  trigger: string;
   title: string;
   summary: string;
   scope: string;
@@ -137,6 +141,8 @@ export interface ExplorationCapsule {
   fingerprints: string[];
   producer: string;
   status: CapsuleStatus;
+  validation: MemoryValidation;
+  confidence: number;
   use_count: number;
   helpful_count: number;
   rejected_count: number;
@@ -149,6 +155,7 @@ export interface ContextSnapshot {
   task_id: string;
   project_id: string;
   task: Task;
+  project_rules: ExplorationCapsule[];
   suggested_capsules: ExplorationCapsule[];
   created_at: number;
 }
@@ -427,6 +434,29 @@ export async function updateLearningNote(
     "PATCH",
     `/api/v1/learning-notes/${encodeURIComponent(noteId)}`,
     input
+  );
+}
+
+export async function promoteLearningNote(
+  noteId: string,
+  evidence: string,
+  memoryClass: MemoryClass
+): Promise<LearningNote> {
+  return request<LearningNote>(
+    "POST",
+    `/api/v1/learning-notes/${encodeURIComponent(noteId)}/promote`,
+    { evidence, memory_class: memoryClass }
+  );
+}
+
+export async function rejectLearningNote(
+  noteId: string,
+  reason: string
+): Promise<LearningNote> {
+  return request<LearningNote>(
+    "POST",
+    `/api/v1/learning-notes/${encodeURIComponent(noteId)}/reject`,
+    { reason }
   );
 }
 

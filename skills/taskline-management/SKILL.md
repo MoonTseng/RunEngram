@@ -403,6 +403,7 @@ taskline task search --project demo "historical context" --limit 10
 taskline task get <id>
 taskline task history <id>                  # actor, operation, time, before/after
 taskline task context <id>                  # immutable task-start context + recalled memory
+taskline task recall <id> --query "<new context>" # dynamic memory lookup during work
 taskline task resume <id>                   # snapshot + latest checkpoint + recent events
 
 # Mutate (PATCH semantics — only pass the flags you want changed)
@@ -444,6 +445,8 @@ taskline task unlink <link-id>
 # Verified engineering memory
 taskline capsule list --project demo --query webview
 taskline capsule create --project demo --source-task <id> \
+  --memory-class experience \
+  --trigger "Deleting a compatibility service" \
   --title "Reusable migration boundary" \
   --summary "Migrate callers before deleting compatibility service" \
   --scope "WebView URL service migrations" \
@@ -652,8 +655,17 @@ Promote only after commands, tests, artifacts, or merged changes verify the
 guidance:
 
 ```bash
-taskline learning promote <note-id> --evidence-file <file>
+taskline learning promote <note-id> \
+  --memory-class experience \
+  --evidence-file <file>
 ```
+
+Choose `--memory-class project-rule` only for a reviewed convention that
+applies broadly across the project, such as branch policy, required ingestion
+step, architectural boundary, or canonical verification command. Project rules
+are eligible for every future task and use a separate context budget. Use the
+default `experience` for module-, symptom-, tool-, or scenario-specific
+guidance; RunEngram retrieves it by relevance.
 
 Reject disproved or non-reusable guidance:
 
@@ -666,6 +678,19 @@ recalled into another task. Never capture secrets in a Learning Note or its
 evidence. Use `--producer codex` by default and `--producer claude-code` when
 the recovery came from Claude Code; producer identifies the tool, not a
 separate knowledge silo.
+
+The Project Knowledge page exposes the same review loop: edit a candidate,
+choose **Validate & enable** with class and evidence, or **Reject** with a
+reason. Review requires a registered Agent identity but does not require the
+source task's expired lease; capture still requires the live task owner.
+
+Promoted memory begins `verified` with confidence 0.60. Each task can store one
+reuse outcome for that memory. `helpful` adds 0.10, `rejected` subtracts 0.15,
+and `stale` removes it from recall. Two helpful task-level observations make it
+`trusted`; two or more negative observations that outnumber helpful ones make
+it `disputed` and exclude it from automatic recall. Report the observed
+outcome, not a desired score. A `trusted` label means repeated evidence, not
+universal truth.
 
 ## Stage playbook — "work the queue"
 
@@ -688,10 +713,16 @@ more instructions:
    `taskline task search --project <p> "<query>" --format json` to find
    the related task before relying on memory or chat history.
    Immediately run `taskline task context <id> --format json`. This creates
-   one immutable task-start snapshot and returns up to five relevant,
-   verified exploration capsules from the same project. Read their `scope`
-   and `evidence` before using them. Do not substitute recalled knowledge for
-   current code verification. Apply the Work Graph selection rules above.
+   one immutable task-start snapshot. Apply every active `project_rules` entry
+   unless current code disproves it. Read each relevant
+   `suggested_capsules` entry's `scope`, `evidence`, `validation`, and
+   `confidence` before using it. Recall uses a rune budget and relevance rank,
+   not a fixed five-item limit. When execution later reveals a new module,
+   error, command, or tool that the initial task text did not contain, run
+   `taskline task recall <id> --query "<new concrete context>" --format json`
+   before improvising. Dynamic recall does not mutate the immutable task-start
+   snapshot. Do not substitute recalled knowledge for current code
+   verification. Apply the Work Graph selection rules above.
    Start with `--workflow engineering-flow`, or a project Workflow Adapter,
    only when those rules select a graph; otherwise omit `--workflow`. Retain
    the returned `run.id`. When
@@ -809,13 +840,16 @@ task description or implementation notes, then continue.
   4. Write or extend failing tests for the new behavior.
   5. Implement until the focused tests pass and the behavior is ready
      for full local verification.
-  6. Capture each new reusable recovery or human correction immediately with
+  6. When a newly observed module, failure signature, command, or tool changes
+     the active context, run `taskline task recall <id> --query "<observation>"`
+     and inspect newly matched experience before selecting another route.
+  7. Capture each new reusable recovery or human correction immediately with
      `taskline run event <run-id> --kind learning.discovered`. Do not wait
      until chat context is lost.
-  7. Create or update a `Dev Notes` task doc summarizing the
+  8. Create or update a `Dev Notes` task doc summarizing the
      implementation, issues encountered, and any divergence from the
      `Spec` doc with the reason.
-  8. For each recalled capsule used, record the observed result:
+  9. For each recalled capsule used, record the observed result:
      `taskline capsule use <capsule-id> --task <id> --outcome helpful|rejected|stale`.
      Use `stale` when current code disproves once-valid knowledge. Include a
      short note explaining evidence.

@@ -17,6 +17,8 @@ import (
 type CreateCapsuleInput struct {
 	ProjectID    string
 	SourceTaskID string
+	MemoryClass  model.MemoryClass
+	Trigger      string
 	Title        string
 	Summary      string
 	Scope        string
@@ -27,6 +29,8 @@ type CreateCapsuleInput struct {
 }
 
 type UpdateCapsuleInput struct {
+	MemoryClass  *model.MemoryClass
+	Trigger      *string
 	Title        *string
 	Summary      *string
 	Scope        *string
@@ -37,10 +41,11 @@ type UpdateCapsuleInput struct {
 }
 
 type CapsuleListInput struct {
-	ProjectID string
-	Query     string
-	Status    model.CapsuleStatus
-	Limit     int
+	ProjectID   string
+	Query       string
+	Status      model.CapsuleStatus
+	MemoryClass model.MemoryClass
+	Limit       int
 }
 
 type RecordUsageInput struct {
@@ -82,6 +87,10 @@ const (
 	maxLearningNoteScopeRunes     = 2_000
 	maxLearningNoteEvidenceRunes  = 32_000
 	maxLearningNoteRejectionRunes = 2_000
+	projectRuleBudgetRunes        = 8_000
+	experienceRecallBudgetRunes   = 12_000
+	maxProjectRules               = 32
+	maxRecalledExperiences        = 20
 )
 
 func (s *Service) CaptureLearningNote(
@@ -196,16 +205,24 @@ func (s *Service) PromoteLearningNote(
 	id string,
 	agentName string,
 	evidence string,
+	memoryClasses ...model.MemoryClass,
 ) (*model.LearningNote, error) {
 	evidence = strings.TrimSpace(evidence)
 	if err := validateLearningText("evidence", evidence, true, maxLearningNoteEvidenceRunes); err != nil {
 		return nil, err
 	}
-	before, task, err := s.learningNoteAndOwnedTask(ctx, id, agentName)
+	memoryClass := model.MemoryClassExperience
+	if len(memoryClasses) > 0 && memoryClasses[0] != "" {
+		memoryClass = memoryClasses[0]
+	}
+	if !memoryClass.Valid() {
+		return nil, fmt.Errorf("invalid memory class %q", memoryClass)
+	}
+	before, task, err := s.learningNoteAndTask(ctx, id, agentName)
 	if err != nil {
 		return nil, err
 	}
-	note, capsule, err := s.st.PromoteLearningNote(ctx, before.ID, evidence)
+	note, capsule, err := s.st.PromoteLearningNote(ctx, before.ID, evidence, memoryClass)
 	if err != nil {
 		return nil, err
 	}
@@ -219,6 +236,7 @@ func (s *Service) PromoteLearningNote(
 				"learning_note_id": note.ID,
 				"capsule_id":       capsule.ID,
 				"evidence":         note.Evidence,
+				"memory_class":     capsule.MemoryClass,
 			},
 			note.ResolvedAt,
 		); err != nil {
@@ -238,7 +256,7 @@ func (s *Service) RejectLearningNote(
 	if err := validateLearningText("reason", reason, true, maxLearningNoteRejectionRunes); err != nil {
 		return nil, err
 	}
-	before, task, err := s.learningNoteAndOwnedTask(ctx, id, agentName)
+	before, task, err := s.learningNoteAndTask(ctx, id, agentName)
 	if err != nil {
 		return nil, err
 	}
@@ -282,7 +300,7 @@ func (s *Service) UpdateLearningNote(
 	if err := validateLearningText("scope", input.Scope, false, maxLearningNoteScopeRunes); err != nil {
 		return nil, err
 	}
-	before, task, err := s.learningNoteAndOwnedTask(ctx, id, agentName)
+	before, task, err := s.learningNoteAndTask(ctx, id, agentName)
 	if err != nil {
 		return nil, err
 	}
@@ -314,20 +332,20 @@ func (s *Service) UpdateLearningNote(
 	return note, nil
 }
 
-func (s *Service) learningNoteAndOwnedTask(
+func (s *Service) learningNoteAndTask(
 	ctx context.Context,
 	id string,
 	agentName string,
 ) (*model.LearningNote, *model.Task, error) {
+	if strings.TrimSpace(agentName) == "" {
+		return nil, nil, errors.New("agent identity required")
+	}
 	note, err := s.st.GetLearningNote(ctx, strings.TrimSpace(id))
 	if err != nil {
 		return nil, nil, err
 	}
 	task, err := s.st.GetTask(ctx, note.SourceTaskID)
 	if err != nil {
-		return nil, nil, err
-	}
-	if err := requireLiveOwner(task, agentName); err != nil {
 		return nil, nil, err
 	}
 	return note, task, nil
@@ -361,12 +379,19 @@ func validateLearningText(name, value string, required bool, maxRunes int) error
 func (s *Service) CreateCapsule(ctx context.Context, input CreateCapsuleInput) (*model.ExplorationCapsule, error) {
 	input.ProjectID = strings.TrimSpace(input.ProjectID)
 	input.SourceTaskID = strings.TrimSpace(input.SourceTaskID)
+	input.Trigger = strings.TrimSpace(input.Trigger)
 	input.Title = strings.TrimSpace(input.Title)
 	input.Summary = strings.TrimSpace(input.Summary)
 	input.Evidence = strings.TrimSpace(input.Evidence)
 	input.Producer = strings.TrimSpace(input.Producer)
 	if input.Producer == "" {
 		input.Producer = "codex"
+	}
+	if input.MemoryClass == "" {
+		input.MemoryClass = model.MemoryClassExperience
+	}
+	if !input.MemoryClass.Valid() {
+		return nil, fmt.Errorf("invalid memory class %q", input.MemoryClass)
 	}
 	if input.ProjectID == "" || input.Title == "" || input.Summary == "" || input.Evidence == "" {
 		return nil, errors.New("project_id, title, summary, and evidence are required")
@@ -377,6 +402,7 @@ func (s *Service) CreateCapsule(ctx context.Context, input CreateCapsuleInput) (
 	}
 	capsule := &model.ExplorationCapsule{
 		ProjectID: project.ID, SourceTaskID: input.SourceTaskID,
+		MemoryClass: input.MemoryClass, Trigger: input.Trigger,
 		Title: input.Title, Summary: input.Summary, Scope: strings.TrimSpace(input.Scope),
 		Evidence: input.Evidence, Labels: input.Labels, Fingerprints: input.Fingerprints,
 		Producer: input.Producer,
@@ -392,6 +418,9 @@ func (s *Service) ListCapsules(ctx context.Context, input CapsuleListInput) ([]m
 	if input.Status != "" && !input.Status.Valid() {
 		return nil, fmt.Errorf("invalid capsule status %q", input.Status)
 	}
+	if input.MemoryClass != "" && !input.MemoryClass.Valid() {
+		return nil, fmt.Errorf("invalid memory class %q", input.MemoryClass)
+	}
 	if input.Limit < 0 || input.Limit > 200 {
 		return nil, errors.New("limit must be between 0 and 200")
 	}
@@ -400,7 +429,8 @@ func (s *Service) ListCapsules(ctx context.Context, input CapsuleListInput) ([]m
 		return nil, err
 	}
 	return s.st.ListCapsules(ctx, store.CapsuleFilter{
-		ProjectID: project.ID, Query: input.Query, Status: input.Status, Limit: input.Limit,
+		ProjectID: project.ID, Query: input.Query, Status: input.Status,
+		MemoryClass: input.MemoryClass, Limit: input.Limit,
 	})
 }
 
@@ -411,6 +441,9 @@ func (s *Service) GetCapsule(ctx context.Context, id string) (*model.Exploration
 func (s *Service) UpdateCapsule(ctx context.Context, id string, input UpdateCapsuleInput) (*model.ExplorationCapsule, error) {
 	if input.Status != nil && !input.Status.Valid() {
 		return nil, fmt.Errorf("invalid capsule status %q", *input.Status)
+	}
+	if input.MemoryClass != nil && !input.MemoryClass.Valid() {
+		return nil, fmt.Errorf("invalid memory class %q", *input.MemoryClass)
 	}
 	for name, value := range map[string]*string{
 		"title": input.Title, "summary": input.Summary, "evidence": input.Evidence,
@@ -424,6 +457,7 @@ func (s *Service) UpdateCapsule(ctx context.Context, id string, input UpdateCaps
 		}
 	}
 	return s.st.UpdateCapsule(ctx, id, store.CapsuleUpdate{
+		MemoryClass: input.MemoryClass, Trigger: input.Trigger,
 		Title: input.Title, Summary: input.Summary, Scope: input.Scope, Evidence: input.Evidence,
 		Labels: input.Labels, Fingerprints: input.Fingerprints, Status: input.Status,
 	})
@@ -450,11 +484,37 @@ func (s *Service) GetOrCreateTaskContext(ctx context.Context, taskID string) (*m
 	if err != nil {
 		return nil, err
 	}
+	recall := buildMemoryRecall(*task, capsules, "")
 	snapshot := &model.ContextSnapshot{
 		TaskID: task.ID, ProjectID: task.ProjectID, Task: *task,
-		SuggestedCapsules: matchCapsules(*task, capsules, 5),
+		ProjectRules: recall.ProjectRules, SuggestedCapsules: recall.SuggestedCapsules,
 	}
 	return s.st.CreateContextSnapshot(ctx, snapshot)
+}
+
+func (s *Service) RecallTaskMemory(
+	ctx context.Context,
+	taskID, agentName, query string,
+) (*model.MemoryRecall, error) {
+	task, err := s.st.GetTask(ctx, strings.TrimSpace(taskID))
+	if err != nil {
+		return nil, err
+	}
+	if err := requireLiveOwner(task, agentName); err != nil {
+		return nil, err
+	}
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, errors.New("recall query required")
+	}
+	capsules, err := s.st.ListCapsules(ctx, store.CapsuleFilter{
+		ProjectID: task.ProjectID, Status: model.CapsuleStatusActive,
+	})
+	if err != nil {
+		return nil, err
+	}
+	recall := buildMemoryRecall(*task, capsules, query)
+	return &recall, nil
 }
 
 func (s *Service) RecordCapsuleUsage(ctx context.Context, input RecordUsageInput) (*model.CapsuleUsage, error) {
@@ -516,25 +576,73 @@ func (s *Service) GetLearningMetrics(ctx context.Context, projectID string) (*mo
 
 type rankedCapsule struct {
 	capsule model.ExplorationCapsule
-	score   int
+	score   float64
 }
 
-func matchCapsules(task model.Task, capsules []model.ExplorationCapsule, limit int) []model.ExplorationCapsule {
+func buildMemoryRecall(task model.Task, capsules []model.ExplorationCapsule, query string) model.MemoryRecall {
+	recallTask := task
+	if query != "" {
+		recallTask.Description = strings.TrimSpace(task.Description + "\n" + query)
+	}
+	return model.MemoryRecall{
+		TaskID: task.ID, ProjectID: task.ProjectID, Query: query,
+		ProjectRules: selectProjectRules(capsules, projectRuleBudgetRunes, maxProjectRules),
+		SuggestedCapsules: matchCapsules(
+			recallTask,
+			capsules,
+			experienceRecallBudgetRunes,
+			maxRecalledExperiences,
+		),
+		RecalledAt: time.Now().UnixMilli(),
+	}
+}
+
+func selectProjectRules(capsules []model.ExplorationCapsule, budgetRunes, maxCount int) []model.ExplorationCapsule {
+	rules := make([]model.ExplorationCapsule, 0)
+	for _, capsule := range capsules {
+		if capsule.Status == model.CapsuleStatusActive &&
+			capsule.MemoryClass == model.MemoryClassProjectRule &&
+			capsule.Validation != model.MemoryValidationDisputed {
+			rules = append(rules, capsule)
+		}
+	}
+	sort.SliceStable(rules, func(i, j int) bool {
+		if rules[i].Confidence != rules[j].Confidence {
+			return rules[i].Confidence > rules[j].Confidence
+		}
+		if rules[i].UpdatedAt != rules[j].UpdatedAt {
+			return rules[i].UpdatedAt > rules[j].UpdatedAt
+		}
+		return rules[i].ID < rules[j].ID
+	})
+	return fitMemoryBudget(rules, budgetRunes, maxCount)
+}
+
+func matchCapsules(
+	task model.Task,
+	capsules []model.ExplorationCapsule,
+	budgetRunes, maxCount int,
+) []model.ExplorationCapsule {
 	taskTitle := tokenSet(task.Title)
 	taskBody := tokenSet(task.Description)
 	taskLabels := stringSet(task.Labels)
 	taskAll := mergeSets(taskTitle, taskBody, taskLabels)
 	ranked := make([]rankedCapsule, 0, len(capsules))
 	for _, capsule := range capsules {
-		if capsule.Status != model.CapsuleStatusActive {
+		if capsule.Status != model.CapsuleStatusActive ||
+			capsule.MemoryClass == model.MemoryClassProjectRule ||
+			capsule.Validation == model.MemoryValidationDisputed {
 			continue
 		}
-		score := 5*overlap(taskLabels, stringSet(capsule.Labels)) +
+		relevance := 5*overlap(taskLabels, stringSet(capsule.Labels)) +
 			4*overlap(taskAll, stringSet(capsule.Fingerprints)) +
 			3*overlap(taskTitle, tokenSet(capsule.Title)) +
 			2*overlap(taskAll, tokenSet(capsule.Summary)) +
+			2*overlap(taskAll, tokenSet(capsule.Trigger)) +
 			overlap(taskAll, tokenSet(capsule.Scope))
-		if score > 0 {
+		if relevance > 0 {
+			score := float64(relevance) + 2*capsule.Confidence +
+				0.25*float64(capsule.HelpfulCount) - 0.25*float64(capsule.RejectedCount)
 			ranked = append(ranked, rankedCapsule{capsule: capsule, score: score})
 		}
 	}
@@ -547,12 +655,28 @@ func matchCapsules(task model.Task, capsules []model.ExplorationCapsule, limit i
 		}
 		return ranked[i].capsule.ID < ranked[j].capsule.ID
 	})
-	if limit > 0 && len(ranked) > limit {
-		ranked = ranked[:limit]
-	}
 	out := make([]model.ExplorationCapsule, len(ranked))
 	for i := range ranked {
 		out[i] = ranked[i].capsule
+	}
+	return fitMemoryBudget(out, budgetRunes, maxCount)
+}
+
+func fitMemoryBudget(capsules []model.ExplorationCapsule, budgetRunes, maxCount int) []model.ExplorationCapsule {
+	out := make([]model.ExplorationCapsule, 0, len(capsules))
+	used := 0
+	for _, capsule := range capsules {
+		if maxCount > 0 && len(out) >= maxCount {
+			break
+		}
+		cost := utf8.RuneCountInString(
+			capsule.Trigger + capsule.Title + capsule.Summary + capsule.Scope + capsule.Evidence,
+		)
+		if len(out) > 0 && budgetRunes > 0 && used+cost > budgetRunes {
+			continue
+		}
+		out = append(out, capsule)
+		used += cost
 	}
 	return out
 }

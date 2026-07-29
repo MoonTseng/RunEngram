@@ -76,13 +76,17 @@ The current alpha ships the **task execution and learning kernel**:
   interrupts, and complete cross-session restore;
 - verified Exploration Capsules with project scope, evidence, fingerprints,
   source task, and producer;
+- layered memory: project rules and relevance-loaded scoped experience under
+  separate context budgets;
+- dynamic recall when execution reveals context missing from the task-start
+  snapshot;
 - agent-driven capture of human corrections and successful recovery paths as
   pending learning notes;
 - capture of explicit reusable project conventions, visible learning receipts,
   and manual correction of pending candidates before promotion;
 - evidence-gated, idempotent promotion from one pending learning note to one
   active Exploration Capsule, plus explicit rejection;
-- deterministic same-project recall;
+- deterministic, budgeted same-project recall with explainable confidence;
 - observed helpful, rejected, and stale reuse outcomes plus honest aggregate
   metrics;
 - candidate, pending, promoted, rejected, and promotion-rate visibility in the
@@ -93,9 +97,10 @@ compatibility. RunEngram is the public product name.
 
 The alpha does **not** passively ingest transcripts, autonomously rewrite
 skills or tests, or claim causal time-saved estimates. Capture is driven by
-the agent skill; promotion requires explicit verification evidence. Automatic
-evidence-to-skill/test/rule enforcement and richer learning-lift measurement
-remain roadmap capabilities.
+the agent skill; promotion requires explicit verification evidence and a
+developer-selected memory class. Automatic conversion from trusted memory into
+lint rules, tests, templates, or workflow gates and richer learning-lift
+measurement remain roadmap capabilities.
 
 ## Product principles
 
@@ -223,10 +228,12 @@ learning improvement.
    typed human interrupts, stage receipts, and an Action Console that exposes
    observed completion, evidence, artifacts, recalled context, and pending
    decisions.
-7. Add optional human/team review policy and promotion into skills, tests,
+7. ✅ Add project-rule/scoped-experience memory layers, dynamic recall, and
+   observed confidence states.
+8. Add optional human/team review policy and promotion into skills, tests,
    lint rules, templates, and workflow gates.
-8. Add richer learning-lift measurement after pilot data exists.
-9. Add optional small-team synchronization without weakening local-first use.
+9. Add richer learning-lift measurement after pilot data exists.
+10. Add optional small-team synchronization without weakening local-first use.
 
 Each phase must demonstrate reduced repeated work before the next layer earns
 more complexity.

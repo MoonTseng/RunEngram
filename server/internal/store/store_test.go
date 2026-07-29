@@ -1028,7 +1028,7 @@ func TestMigrationsRunOnceAcrossReopens(t *testing.T) {
 
 	v1, err := readUserVersion(path)
 	require.NoError(t, err)
-	require.Equal(t, 19, v1, "first open should advance to latest schema version")
+	require.Equal(t, 20, v1, "first open should advance to latest schema version")
 
 	require.NoError(t, st1.Close())
 
@@ -1177,7 +1177,7 @@ func TestMigrationAddsDocsTypeWithoutDroppingTaskChildren(t *testing.T) {
 
 	v, err := readUserVersion(path)
 	require.NoError(t, err)
-	require.Equal(t, 19, v)
+	require.Equal(t, 20, v)
 
 	got, err := st.GetTask(ctx, "b")
 	require.NoError(t, err)
@@ -1251,7 +1251,7 @@ func TestMigrationUpgradesCreatedAndDesignRows(t *testing.T) {
 
 	v, err := readUserVersion(path)
 	require.NoError(t, err)
-	require.Equal(t, 19, v, "migration should have run through latest schema version")
+	require.Equal(t, 20, v, "migration should have run through latest schema version")
 
 	// The legacy 'created' row was renamed to 'start' during the swap.
 	ta, err := st.GetTask(ctx, "a")
@@ -1305,6 +1305,13 @@ func TestMigration19MapsLegacyWorkflowKey(t *testing.T) {
 		        CHECK (workflow_template IN ('single-loop', 'cs-one-flow')),
 		    workflow_version INTEGER NOT NULL DEFAULT 1
 		);
+		CREATE TABLE exploration_capsules (
+		    id TEXT PRIMARY KEY,
+		    project_id TEXT NOT NULL,
+		    status TEXT NOT NULL DEFAULT 'verified',
+		    created_at INTEGER NOT NULL DEFAULT 0,
+		    updated_at INTEGER NOT NULL DEFAULT 0
+		);
 		INSERT INTO agent_runs(
 		    id,task_id,project_id,agent_name,agent_tool,status,
 		    workflow_template,workflow_version,started_at,updated_at
@@ -1323,7 +1330,50 @@ func TestMigration19MapsLegacyWorkflowKey(t *testing.T) {
 	run, err := st.GetAgentRun(ctx, "legacy-run")
 	require.NoError(t, err)
 	require.Equal(t, model.WorkflowTemplateEngineeringFlow, run.WorkflowTemplate)
-	require.Equal(t, 19, readStoreUserVersion(t, path))
+	require.Equal(t, 20, readStoreUserVersion(t, path))
+}
+
+func TestMigration20AddsLayeredMemoryColumns(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "taskline.db")
+	raw, err := sql.Open("sqlite", "file:"+path)
+	require.NoError(t, err)
+	_, err = raw.ExecContext(ctx, `
+		CREATE TABLE exploration_capsules (
+		    id TEXT PRIMARY KEY,
+		    project_id TEXT NOT NULL,
+		    status TEXT NOT NULL DEFAULT 'verified',
+		    created_at INTEGER NOT NULL DEFAULT 0,
+		    updated_at INTEGER NOT NULL DEFAULT 0
+		);
+		PRAGMA user_version=19;
+	`)
+	require.NoError(t, err)
+	require.NoError(t, raw.Close())
+
+	st, err := store.New(path)
+	require.NoError(t, err)
+	require.NoError(t, st.Close())
+
+	raw, err = sql.Open("sqlite", "file:"+path)
+	require.NoError(t, err)
+	defer raw.Close()
+	rows, err := raw.QueryContext(ctx, `PRAGMA table_info(exploration_capsules)`)
+	require.NoError(t, err)
+	defer rows.Close()
+	columns := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull, primaryKey int
+		var defaultValue any
+		require.NoError(t, rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey))
+		columns[name] = true
+	}
+	require.NoError(t, rows.Err())
+	require.True(t, columns["memory_class"])
+	require.True(t, columns["trigger"])
+	require.Equal(t, 20, readStoreUserVersion(t, path))
 }
 
 func readStoreUserVersion(t *testing.T, path string) int {

@@ -28,6 +28,11 @@ export function MemoryDetail({ capsule }: { capsule: ExplorationCapsule | null }
         <ShieldCheck size={22} className="shrink-0 text-[var(--tl-moss)]" />
       </div>
       <p className="mt-4 text-[15px] leading-7 text-[var(--tl-ink-muted)]">{capsule.summary}</p>
+      {capsule.trigger && (
+        <p className="mt-3 rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-bg-quiet)] p-3 text-sm leading-6">
+          <strong>{t("knowledge.trigger")}:</strong> {capsule.trigger}
+        </p>
+      )}
 
       <section className="mt-6 rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-bg-quiet)] p-4">
         <h3 className="font-bold">{t("knowledge.whyTrusted")}</h3>
@@ -52,6 +57,16 @@ export function MemoryDetail({ capsule }: { capsule: ExplorationCapsule | null }
         <div>
           <dt className="text-[var(--tl-ink-faint)]">{t("knowledge.observedReuse")}</dt>
           <dd className="mt-1 font-semibold">{capsule.use_count} / {capsule.helpful_count} {t("knowledge.helpful")}</dd>
+        </div>
+        <div>
+          <dt className="text-[var(--tl-ink-faint)]">{t("knowledge.memoryClass")}</dt>
+          <dd className="mt-1 font-semibold">
+            {capsule.memory_class === "project-rule" ? t("knowledge.projectRule") : t("knowledge.scopedExperience")}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[var(--tl-ink-faint)]">{t("knowledge.confidence")}</dt>
+          <dd className="mt-1 font-semibold">{Math.round(capsule.confidence * 100)}%</dd>
         </div>
       </dl>
 

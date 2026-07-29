@@ -37,7 +37,8 @@ export function ActionConsole({
   const context = resume.data?.snapshot;
   const latestRun = resume.data?.latest_run;
   const workGraph = resume.data?.work_graph;
-  const recalled = context?.suggested_capsules ?? [];
+  const projectRules = context?.project_rules ?? [];
+  const recalled = [...projectRules, ...(context?.suggested_capsules ?? [])];
   const resolveInterrupt = useResolveRunInterrupt(
     focus.kind === "active" ? focus.task.id : null
   );
@@ -240,8 +241,15 @@ export function ActionConsole({
                   return (
                     <article key={capsule.id} className="rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-bg-quiet)] p-4">
                       <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-bold leading-6">{capsule.title}</h3>
-                        <ShieldCheck size={16} className="shrink-0 text-[var(--tl-moss)]" />
+                        <div>
+                          <span className="status-chip">
+                            {capsule.memory_class === "project-rule"
+                              ? t("knowledge.projectRule")
+                              : t("knowledge.scopedExperience")}
+                          </span>
+                          <h3 className="mt-2 font-bold leading-6">{capsule.title}</h3>
+                        </div>
+                        <ShieldCheck size={16} className="mt-1 shrink-0 text-[var(--tl-moss)]" />
                       </div>
                       <p className="mt-2 line-clamp-3 text-sm leading-6 text-[var(--tl-ink-muted)]">
                         {capsule.summary}
@@ -249,6 +257,7 @@ export function ActionConsole({
                       <p className="mt-3 text-xs text-[var(--tl-ink-faint)]">
                         {capsule.scope || t("action.projectScope")} · {capsule.use_count} {t("knowledge.uses")}
                         {helpful === null ? "" : ` · ${helpful}% ${t("action.helpful")}`}
+                        {` · ${Math.round(capsule.confidence * 100)}% ${t("knowledge.confidence")}`}
                       </p>
                     </article>
                   );

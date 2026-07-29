@@ -399,6 +399,26 @@ func (s CapsuleStatus) Valid() bool {
 	return s == CapsuleStatusActive || s == CapsuleStatusStale || s == CapsuleStatusArchived
 }
 
+type MemoryClass string
+
+const (
+	MemoryClassExperience  MemoryClass = "experience"
+	MemoryClassProjectRule MemoryClass = "project-rule"
+)
+
+func (c MemoryClass) Valid() bool {
+	return c == MemoryClassExperience || c == MemoryClassProjectRule
+}
+
+type MemoryValidation string
+
+const (
+	MemoryValidationVerified MemoryValidation = "verified"
+	MemoryValidationTrusted  MemoryValidation = "trusted"
+	MemoryValidationDisputed MemoryValidation = "disputed"
+	MemoryValidationStale    MemoryValidation = "stale"
+)
+
 type CapsuleOutcome string
 
 const (
@@ -460,22 +480,26 @@ type LearningNote struct {
 
 // ExplorationCapsule is verified, reusable engineering knowledge.
 type ExplorationCapsule struct {
-	ID            string        `json:"id"`
-	ProjectID     string        `json:"project_id"`
-	SourceTaskID  string        `json:"source_task_id"`
-	Title         string        `json:"title"`
-	Summary       string        `json:"summary"`
-	Scope         string        `json:"scope"`
-	Evidence      string        `json:"evidence"`
-	Labels        []string      `json:"labels"`
-	Fingerprints  []string      `json:"fingerprints"`
-	Producer      string        `json:"producer"`
-	Status        CapsuleStatus `json:"status"`
-	UseCount      int           `json:"use_count"`
-	HelpfulCount  int           `json:"helpful_count"`
-	RejectedCount int           `json:"rejected_count"`
-	CreatedAt     int64         `json:"created_at"`
-	UpdatedAt     int64         `json:"updated_at"`
+	ID            string           `json:"id"`
+	ProjectID     string           `json:"project_id"`
+	SourceTaskID  string           `json:"source_task_id"`
+	MemoryClass   MemoryClass      `json:"memory_class"`
+	Trigger       string           `json:"trigger"`
+	Title         string           `json:"title"`
+	Summary       string           `json:"summary"`
+	Scope         string           `json:"scope"`
+	Evidence      string           `json:"evidence"`
+	Labels        []string         `json:"labels"`
+	Fingerprints  []string         `json:"fingerprints"`
+	Producer      string           `json:"producer"`
+	Status        CapsuleStatus    `json:"status"`
+	Validation    MemoryValidation `json:"validation"`
+	Confidence    float64          `json:"confidence"`
+	UseCount      int              `json:"use_count"`
+	HelpfulCount  int              `json:"helpful_count"`
+	RejectedCount int              `json:"rejected_count"`
+	CreatedAt     int64            `json:"created_at"`
+	UpdatedAt     int64            `json:"updated_at"`
 }
 
 // ContextSnapshot freezes task input and suggested memory at first read.
@@ -484,8 +508,19 @@ type ContextSnapshot struct {
 	TaskID            string               `json:"task_id"`
 	ProjectID         string               `json:"project_id"`
 	Task              Task                 `json:"task"`
+	ProjectRules      []ExplorationCapsule `json:"project_rules"`
 	SuggestedCapsules []ExplorationCapsule `json:"suggested_capsules"`
 	CreatedAt         int64                `json:"created_at"`
+}
+
+// MemoryRecall is a live, query-specific recall during task execution.
+type MemoryRecall struct {
+	TaskID            string               `json:"task_id"`
+	ProjectID         string               `json:"project_id"`
+	Query             string               `json:"query"`
+	ProjectRules      []ExplorationCapsule `json:"project_rules"`
+	SuggestedCapsules []ExplorationCapsule `json:"suggested_capsules"`
+	RecalledAt        int64                `json:"recalled_at"`
 }
 
 type CapsuleUsage struct {
