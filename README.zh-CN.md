@@ -14,12 +14,12 @@ RunEngram 把任务、Agent 收到的上下文、测试证据和可复用结论�
 的工具。
 
 > **当前状态：早期 Alpha。** 我们正在本地试用。可恢复 Agent 执行、
-> 上下文快照、检查点、学习回执、经验编辑审核、召回和复用统计已经实现；
-> 自动把经验转成强制项目规则还没有做。
+> One-flow Work Graph、上下文快照、阶段回执、人工决策、经验审核、召回和
+> 复用统计已经实现；自动把经验转成强制项目规则还没有做。
 
-![RunEngram 行动台](./docs/assets/runengram-action-console-zh-CN.jpg)
+![RunEngram One-flow Work Graph](./docs/assets/runengram-oneflow-work-graph-zh-CN.png)
 
-<p align="center"><sub>默认页面直接显示当前任务、下一步、阻塞项和召回的项目经验。</sub></p>
+<p align="center"><sub>默认 Dracula 页面直接显示当前阶段、证据、交付物、待处理决策和召回经验。</sub></p>
 
 ## 它具体做什么
 
@@ -27,7 +27,8 @@ RunEngram 把任务、Agent 收到的上下文、测试证据和可复用结论�
 
 1. 开发者写清任务和验收条件；
 2. Agent 领取任务，并拿到一份固定的上下文快照；
-3. 执行过程保存精简检查点；换会话或中断后直接从下一步恢复；
+3. 复杂研发改动可以走持久化 Work Graph；需求分析、方案、实现、验证和
+   Review 每一步都会留下回执；
 4. 测试、Review 和交付证据跟着任务保存；
 5. 项目约定、人工纠正和已验证恢复路径先成为可编辑候选，审核后才给后面的任务使用。
 
@@ -35,6 +36,7 @@ RunEngram 把任务、Agent 收到的上下文、测试证据和可复用结论�
 | --- | --- |
 | 每次新会话都要重讲需求和架构 | 保存任务输入和本次召回内容，执行中不再漂移 |
 | 长任务中断或换 Codex 会话后要重新理解 | 恢复最近检查点、下一步和执行事件 |
+| 多阶段任务一直在“执行中”，看不出完成了什么 | 展示当前阶段、依赖、交付物、验证证据和待处理人工决策 |
 | 不同 Agent 重复搜索代码、重试失败命令 | 按项目范围和代码指纹保存排查结论 |
 | 有用纠正消失在聊天记录里 | 记录为待审核的经验候选 |
 | 不知道系统到底记住了什么 | 行动台展示学习回执，待验证候选支持人工修改 |
@@ -70,6 +72,35 @@ flowchart LR
 RunEngram 位于 Coding Agent 外部。原来的提示词、Skill、CI 和团队 SOP
 可以继续使用。
 
+## One-flow，但不再造一套流程引擎
+
+需求开发使用 `cs-one-flow` 时，RunEngram 把现有 SOP 映射成八个可恢复阶段：
+
+```mermaid
+flowchart LR
+    A["需求分析"] --> B["技术方案"]
+    B --> C["任务规划"]
+    C --> D["代码实现"]
+    D --> E["重构优化"]
+    E --> F["测试验证"]
+    F --> G["独立复核"]
+    G --> H["结果确认"]
+```
+
+Codex 或 Claude Code 仍然在每个阶段内部自主读代码、改代码和测试；
+`cs-sop-one-flow` 继续负责 CamScanner 的研发规范。RunEngram 只保存跨会话
+必须保留的内容：依赖状态、阶段结论、交付物 ID、输入版本、验证证据和需要
+开发者明确回答的问题。
+
+Work Graph 不是每项任务都强制开启。用户明确要求 one-flow 时直接启用；否则
+只有当实现任务同时存在跨会话上下文丢失、可独立并行的分支、重建成本高的中间
+结果、人工交付门禁等多个信号时才使用。小修复、文档和调研继续走单 Agent
+loop。
+
+因此界面展示的不再只是“Agent 在运行”，而是已经完成几个阶段、几个阶段有
+证据、关联了多少交付物、召回了多少项目经验、还有几个决策等待处理。所有
+数字来自实际回执，不虚构“节省了多少小时”。
+
 ## 和现有工具的区别
 
 下表只比较各工具官方文档里的主要用途，不做笼统的优劣排名。
@@ -78,6 +109,7 @@ RunEngram 位于 Coding Agent 外部。原来的提示词、Skill、CI 和团队
 | --- | --- | --- | --- | --- | --- |
 | 核心作用 | 闭合任务 → 证据 → 记忆 | 保存 Copilot 仓库事实 | 持久化指令与自动记忆 | 在工作区执行 Agent | 度量软件交付 |
 | 任务状态与 Agent 租约 | 支持 | 不支持 | 不支持 | 执行会话 | 交付流程数据 |
+| 持久化多阶段 Work Graph | One-flow 阶段、回执与人工决策 | 不支持 | 不支持 | Agent workflow | 仅交付流程 |
 | 可恢复执行检查点 | 工具无关协议 | 不支持 | 会话记录 | 会话状态 | 不支持 |
 | 不可变任务上下文 | 支持 | 不支持 | 不支持 | 工作区/会话上下文 | 不支持 |
 | 基于证据的记忆晋升 | 支持 | 引用校验 | 人工文件/自动记忆 | 不支持 | 不支持 |
@@ -98,6 +130,8 @@ RunEngram 位于 Coding Agent 外部。原来的提示词、Skill、CI 和团队
 - 原子领取、租约、心跳和中断恢复；
 - Codex、Claude Code、Pi 或其他执行器共用一套 Agent Run：规范化事件、
   精简检查点、恢复上下文和完成状态；
+- 可选 `cs-one-flow` Work Graph：八个带依赖检查的阶段、阶段交付物和证据、
+  类型化人工决策，以及完整恢复状态；
 - 只追加的任务历史，记录操作者、时间和具体改动；
 - 支持不使用 GitHub PR 或 CI 的团队手动评审和完成任务；有交付证据时仍可附加链接与验证文档；
 - 行动台、看板、依赖图和工程记忆页面；
@@ -223,10 +257,14 @@ export TASKLINE_PROJECT=demo
 ./dist/taskline task next --claim
 TASK_ID="<领取到的任务 ID>"
 ./dist/taskline task context "$TASK_ID"
-./dist/taskline run start "$TASK_ID" --agent-tool codex
+./dist/taskline run start "$TASK_ID" --agent-tool codex \
+  --workflow cs-one-flow
 RUN_ID="<上一条输出中的 run id>"
-./dist/taskline run checkpoint "$RUN_ID" \
-  --summary "分析完成" --next-step "实现第一处迁移"
+./dist/taskline run node "$RUN_ID" requirement-analysis \
+  --status completed \
+  --summary "需求范围和验收标准已确认" \
+  --evidence "需求契约已复核"
+./dist/taskline run graph "$RUN_ID"
 ```
 
 `task next` 默认只预览。Agent 真正开始执行前必须使用 `--claim`。
@@ -273,7 +311,9 @@ taskline-management 待规划 【需求描述】
 ```
 
 - 默认：创建一项可执行任务，然后停止，不修改代码；
-- `执行`：创建、领取并完整执行刚创建的任务；
+- `执行`：创建、领取并完整执行刚创建的任务；复杂需求使用 One-flow Work
+  Graph，安装了 `cs-sop-one-flow` 时直接复用原有研发 SOP；小任务仍走单
+  loop；
 - `方案`：创建、领取并生成 Spec，然后在修改代码前停止；
 - `待规划`：创建到不可领取的待规划区。
 
@@ -318,6 +358,7 @@ flowchart LR
     API["RunEngram API"]
     Task["任务状态、依赖、领取与历史"]
     Run["Agent Run、事件与检查点"]
+    Graph["One-flow Work Graph、回执与人工决策"]
     Evidence["验证证据"]
     Candidate["待验证 Learning Note"]
     Learning["已验证 Exploration Capsule"]
@@ -327,6 +368,8 @@ flowchart LR
     Agent --> API
     API --> Task
     Task --> Run
+    Run --> Graph
+    Graph --> Agent
     Run --> Agent
     Task --> Evidence
     Evidence --> Candidate
@@ -341,6 +384,8 @@ flowchart LR
 
 - [Architecture](./ARCHITECTURE.md)
 - [Product philosophy](./PRODUCT.md)
+- [One-flow Work Graph 设计](./docs/design/2026-07-29-oneflow-work-graph.md)
+- [Graph Engineering 调研](./docs/research/graph-engineering-2026.md)
 - [L1 / L2 / L3 Agent Loop](./docs/agent-loop-architecture.zh-CN.md)
 - [Contributor guide](./AGENTS.md)
 

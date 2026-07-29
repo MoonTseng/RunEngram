@@ -68,6 +68,26 @@ export function useTaskResumeContext(taskId: string | null) {
   });
 }
 
+export function useResolveRunInterrupt(taskId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      interruptId,
+      response,
+      reject = false,
+    }: {
+      interruptId: string;
+      response: string;
+      reject?: boolean;
+    }) => api.resolveRunInterrupt(interruptId, response, reject),
+    onSuccess: () => {
+      if (taskId) {
+        void qc.invalidateQueries({ queryKey: ["tasks", taskId, "resume"] });
+      }
+    },
+  });
+}
+
 export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({

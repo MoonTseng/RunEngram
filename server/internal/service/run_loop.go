@@ -13,9 +13,10 @@ import (
 const maxResumeEvents = 20
 
 type StartRunInput struct {
-	TaskID    string
-	AgentName string
-	AgentTool model.AgentTool
+	TaskID           string
+	AgentName        string
+	AgentTool        model.AgentTool
+	WorkflowTemplate model.WorkflowTemplate
 }
 
 type SaveRunCheckpointInput struct {
@@ -53,6 +54,12 @@ func (s *Service) StartOrResumeRun(
 	if !input.AgentTool.Valid() {
 		return nil, false, fmt.Errorf("invalid agent tool %q", input.AgentTool)
 	}
+	if input.WorkflowTemplate != "" && !input.WorkflowTemplate.Valid() {
+		return nil, false, fmt.Errorf(
+			"invalid workflow template %q",
+			input.WorkflowTemplate,
+		)
+	}
 	task, err := s.st.GetTask(ctx, input.TaskID)
 	if err != nil {
 		return nil, false, err
@@ -67,6 +74,14 @@ func (s *Service) StartOrResumeRun(
 				"%w: active run belongs to %s",
 				store.ErrConflict,
 				active.AgentName,
+			)
+		}
+		if input.WorkflowTemplate != "" &&
+			active.WorkflowTemplate != input.WorkflowTemplate {
+			return nil, false, fmt.Errorf(
+				"%w: active run uses workflow %s",
+				store.ErrConflict,
+				active.WorkflowTemplate,
 			)
 		}
 		active.AgentTool = input.AgentTool
@@ -90,10 +105,15 @@ func (s *Service) StartOrResumeRun(
 	if !errors.Is(err, store.ErrNotFound) {
 		return nil, false, err
 	}
-	run, err := s.st.CreateAgentRun(ctx, &model.AgentRun{
+	template := input.WorkflowTemplate
+	if template == "" {
+		template = model.WorkflowTemplateSingleLoop
+	}
+	run, err := s.st.CreateAgentRunWithNodes(ctx, &model.AgentRun{
 		TaskID: task.ID, ProjectID: task.ProjectID, AgentName: input.AgentName,
 		AgentTool: input.AgentTool, Status: model.RunStatusRunning,
-	})
+		WorkflowTemplate: template, WorkflowVersion: 1,
+	}, buildWorkflowNodes(template))
 	if err != nil {
 		return nil, false, err
 	}
@@ -226,6 +246,29 @@ func (s *Service) FinishRun(
 	if run.Status.Terminal() {
 		return run, nil
 	}
+	if input.Status == model.RunStatusCompleted &&
+		run.WorkflowTemplate != model.WorkflowTemplateSingleLoop {
+		graph, graphErr := s.GetRunWorkGraph(ctx, run.ID)
+		if graphErr != nil {
+			return nil, graphErr
+		}
+		resolvedNodeCount := 0
+		for _, node := range graph.Nodes {
+			if node.Status.SatisfiesDependency() {
+				resolvedNodeCount++
+			}
+		}
+		if graph.OpenInterruptCount > 0 ||
+			resolvedNodeCount != len(graph.Nodes) {
+			return nil, fmt.Errorf(
+				"%w: work graph incomplete (%d/%d stages, %d pending decisions)",
+				store.ErrConflict,
+				resolvedNodeCount,
+				len(graph.Nodes),
+				graph.OpenInterruptCount,
+			)
+		}
+	}
 	run.Status = input.Status
 	run.Summary = input.Summary
 	run.NextStep = ""
@@ -272,8 +315,10 @@ func (s *Service) GetTaskResumeContext(
 	if err != nil {
 		return nil, err
 	}
-	if err := requireLiveOwner(task, agentName); err != nil {
-		return nil, err
+	if strings.TrimSpace(agentName) != "" {
+		if err := requireLiveOwner(task, agentName); err != nil {
+			return nil, err
+		}
 	}
 	snapshot, err := s.GetOrCreateTaskContext(ctx, taskID)
 	if err != nil {
@@ -292,9 +337,17 @@ func (s *Service) GetTaskResumeContext(
 	if len(events) > maxResumeEvents {
 		events = events[:maxResumeEvents]
 	}
-	return &model.TaskResumeContext{
+	result := &model.TaskResumeContext{
 		Snapshot: *snapshot, LatestRun: latest, RecentEvents: events,
-	}, nil
+	}
+	if latest != nil && latest.WorkflowTemplate != model.WorkflowTemplateSingleLoop {
+		graph, graphErr := s.GetRunWorkGraph(ctx, latest.ID)
+		if graphErr != nil {
+			return nil, graphErr
+		}
+		result.WorkGraph = graph
+	}
+	return result, nil
 }
 
 func (s *Service) ownedRun(
@@ -348,6 +401,8 @@ func runEventDetails(run *model.AgentRun, extra map[string]any) map[string]any {
 	details["run_id"] = run.ID
 	details["agent_name"] = run.AgentName
 	details["agent_tool"] = run.AgentTool
+	details["workflow_template"] = run.WorkflowTemplate
+	details["workflow_version"] = run.WorkflowVersion
 	return details
 }
 

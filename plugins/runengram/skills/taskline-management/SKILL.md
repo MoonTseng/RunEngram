@@ -159,6 +159,95 @@ the same ID and returns `"resumed": true`; read
 hits a real blocker; it does not drain unrelated queued work. `spec` attaches
 the `Spec` task document and stops before any source-code modification.
 
+### One-flow Work Graph
+
+Use the durable `cs-one-flow` Work Graph when the user explicitly requests
+one-flow, or when requirement/bug/refactor implementation has at least two of
+these properties:
+
+- it spans several sessions or is likely to suffer context loss;
+- independent analysis, implementation, verification, or review can run in
+  parallel;
+- intermediate outputs have explicit acceptance criteria or are expensive to
+  recreate;
+- a human decision is required before delivery;
+- the same staged process is expected to repeat across tasks.
+
+A task type alone does not select a graph. Keep simple features, bugs,
+refactors, mechanical changes, and all docs/research work on the default single
+loop until a matching graph template exists.
+The graph wraps an existing development SOP; it does not replace the coding
+Agent's inner loop or reimplement the project's SOP:
+
+- Codex, Claude Code, Pi, or another tool owns the flexible read/edit/test loop
+  inside each node.
+- `cs-sop-one-flow` owns CamScanner requirement-development conventions when
+  that skill is installed.
+- RunEngram owns cross-session state, stage dependencies, receipts, artifacts,
+  explicit human interrupts, and recovery.
+
+Start the graph after claim and context recall:
+
+```bash
+taskline run start <task-id> --agent-tool codex \
+  --workflow cs-one-flow --format json
+taskline run graph <run-id> --format json
+```
+
+When `cs-sop-one-flow` is available, invoke it for the actual CamScanner
+development work. Map its outputs into these durable nodes instead of creating
+a second workflow:
+
+| Work Graph node | one-flow output / action |
+| --- | --- |
+| `requirement-analysis` | PRD normalization and acceptance criteria |
+| `technical-design` | code-gap analysis and technical design |
+| `task-planning` | ordered implementation/test plan |
+| `implementation` | code development |
+| `refactor` | cleanup without behavior drift |
+| `verification` | focused and full test evidence |
+| `code-review` | independent review findings and fixes |
+| `final-gate` | explicit human acceptance |
+
+Before work in a node, mark it `running`. On success, mark it `completed` with
+a compact result, related task-doc IDs, input fingerprint, and verification
+evidence:
+
+```bash
+taskline run node <run-id> requirement-analysis --status running
+taskline run node <run-id> requirement-analysis --status completed \
+  --summary "Scope and acceptance criteria confirmed" \
+  --artifact-id <spec-doc-id> \
+  --evidence "PRD normalized and acceptance criteria reviewed" \
+  --input-fingerprint "prd-v3"
+```
+
+Do not skip dependency order. A node without evidence may be complete, but it
+does not count as verified in the UI. Attach real evidence: test command and
+result, review outcome, approved artifact, device/API/browser check, or a human
+decision. Never invent a duration or time-saved number.
+
+Use an interrupt only when execution genuinely needs human authority or missing
+product intent. The web UI can answer it and the same run resumes:
+
+```bash
+taskline run interrupt <run-id> technical-design \
+  --kind approval --prompt "Confirm migration boundary?" \
+  --option "Confirm"
+taskline run respond <interrupt-id> --response "Confirm"
+```
+
+For `final-gate`, an Agent must create an approval interrupt and wait for a
+human response. It cannot complete that node itself. Rejected decisions reopen
+the affected upstream node; changing an upstream result invalidates all
+downstream receipts automatically.
+
+After every meaningful boundary, run `taskline run graph <run-id>` and continue
+from the first `ready`, `running`, `waiting`, or `failed` node. On session
+restart, `taskline task resume <task-id>` contains the full Work Graph, pending
+interrupt, stage receipts, and recalled context. Never reconstruct progress
+from chat.
+
 ## Environment
 
 ```bash
@@ -357,6 +446,14 @@ taskline learning edit <note-id> \
 
 # Resumable Agent run
 taskline run start <task-id> --agent-tool codex
+taskline run start <task-id> --agent-tool codex --workflow cs-one-flow
+taskline run graph <run-id>
+taskline run node <run-id> requirement-analysis --status completed \
+  --summary "Requirement contract confirmed" --artifact-id <doc-id> \
+  --evidence "Acceptance criteria reviewed"
+taskline run interrupt <run-id> final-gate --kind approval \
+  --prompt "Accept verified result?" --option "Accept" --option "Revise"
+taskline run respond <interrupt-id> --response "Accept"
 taskline run checkpoint <run-id> --status running \
   --summary "Completed caller inventory" --next-step "Migrate bridge caller"
 taskline run checkpoint <run-id> --status blocked \
@@ -575,9 +672,10 @@ more instructions:
    one immutable task-start snapshot and returns up to five relevant,
    verified exploration capsules from the same project. Read their `scope`
    and `evidence` before using them. Do not substitute recalled knowledge for
-   current code verification. Then run
-   `taskline run start <id> --agent-tool <codex|claude-code|pi|other> --format json`
-   and retain the returned `run.id`. When `"resumed": true`, immediately read
+   current code verification. Apply the One-flow Work Graph selection rules
+   above. Start with `--workflow cs-one-flow` only when those rules select the
+   graph; otherwise omit `--workflow`. Retain the returned `run.id`. When
+   `"resumed": true`, immediately read
    `taskline task resume <id> --format json`; use its `latest_run.summary`,
    `latest_run.next_step`, and `recent_events` instead of asking the user to
    repeat prior work.
@@ -592,6 +690,27 @@ Higher-order capabilities (brainstorming, planning, code review) are
 referenced by what they do, with a Superpowers skill name in
 parentheses if your harness has them; drop the parenthetical if not
 installed.
+
+### Work Graph receipt overlay
+
+Only for a run started with `--workflow cs-one-flow`, persist stage outputs as
+node receipts while following the playbook:
+
+| Playbook output | Node to complete | Minimum receipt |
+| --- | --- | --- |
+| product contract | `requirement-analysis` | Spec doc + reviewed acceptance criteria |
+| chosen architecture | `technical-design` | design summary + design artifact |
+| ordered work | `task-planning` | implementation/test plan |
+| behavior change | `implementation` | changed boundary + focused check |
+| cleanup | `refactor` | no-drift check, or `skipped` with reason |
+| local verification | `verification` | Test Report + commands/results |
+| independent review | `code-review` | Review Report + resolved findings |
+| delivery decision | `final-gate` | answered human approval interrupt |
+
+Mark a node `running` before work and `completed` only after its output exists.
+Use actual task document/image/link IDs for `--artifact-id`; arbitrary labels
+are rejected. After each receipt, read `taskline run graph <run-id>` and follow
+its `next_node`. Never mark a human node `skipped`.
 
 ### start → spec
 
@@ -624,6 +743,8 @@ installed.
 - **Advance:** `taskline task update <id> --state dev`
 - **Checkpoint:** save chosen contract, attached Spec, and first implementation
   action with `taskline run checkpoint <run-id>`.
+- **Graph receipt:** complete `requirement-analysis` with the Spec document ID
+  and acceptance evidence.
 - **Skip when:** the change is mechanical (rename, formatting,
   one-line config) — go straight to dev.
 
@@ -680,6 +801,9 @@ task description or implementation notes, then continue.
 - **Advance:** `taskline task update <id> --state test`
 - **Checkpoint:** save implementation result, changed boundary, known risk,
   and first verification command with `taskline run checkpoint <run-id>`.
+- **Graph receipts:** complete `technical-design`, `task-planning`,
+  `implementation`, and `refactor` in dependency order. Mark `refactor`
+  `skipped` only when no cleanup is needed and include the reason.
 - **Skip when:** never. Implementation must be ready for local
   verification before review begins.
 
@@ -719,6 +843,8 @@ task description or implementation notes, then continue.
      Skip this for local-only, research, docs, and teams without PR workflow.
 - **Advance:** `taskline task update <id> --state review`
 - **Checkpoint:** save verification result and remaining review action.
+- **Graph receipt:** complete `verification` with the Test Report document ID
+  and exact passing checks.
 - **Skip when:** never. Verification evidence is required in the task record;
   a pushed PR is optional unless the project itself requires one.
 
@@ -737,8 +863,13 @@ task description or implementation notes, then continue.
 - **Advance:** `taskline task update <id> --state done` after acceptance
   criteria pass and available evidence is recorded. The server allows this
   manual transition.
-- **Finish run:** immediately before or after the state change, call
-  `taskline run finish <run-id> --status completed --summary "<outcome and verification>"`.
+- **Graph receipts:** complete `code-review` with the Review Report. Create an
+  approval interrupt on `final-gate`, wait for the human response, then
+  complete `final-gate`. Run `taskline run graph <run-id>` and confirm every
+  node is resolved and no interrupt is pending.
+- **Finish run:** after the task state change and, when enabled, graph
+  confirmation, call `taskline run finish <run-id> --status completed
+  --summary "<outcome and verification>"`.
 - **Drop back to dev** with `taskline task update <id> --state dev`
   when review or CI surfaces a real defect. The bidirectional state
   machine exists for exactly this — don't delete-and-recreate.

@@ -29,7 +29,6 @@ func TestAgentRunCheckpointsResumeAndMeasureRecovery(t *testing.T) {
 	require.NoError(t, err)
 	task, err = svc.ClaimTask(ctx, task.ID, service.ClaimOptions{Owner: "codex"})
 	require.NoError(t, err)
-
 	run, resumed, err := svc.StartOrResumeRun(ctx, service.StartRunInput{
 		TaskID: task.ID, AgentName: "codex", AgentTool: model.AgentToolCodex,
 	})
@@ -103,6 +102,212 @@ func TestAgentRunCheckpointsResumeAndMeasureRecovery(t *testing.T) {
 	require.Equal(t, 1, metrics.ResumedRunCount)
 	require.Equal(t, 1.0, metrics.RunCompletionRate)
 	require.Equal(t, 1.0, metrics.RecoveryRate)
+}
+
+func TestOneFlowRunCreatesDurableWorkGraphAndTypedInterrupt(t *testing.T) {
+	ctx := service.WithActor(context.Background(), "codex")
+	svc := newSvc(t)
+	project, err := svc.CreateProject(ctx, "one-flow-graph", "")
+	require.NoError(t, err)
+	task, err := svc.CreateTask(
+		ctx,
+		project.ID,
+		"Build a CamScanner requirement",
+		"Run the existing one-flow SOP with durable stage receipts.",
+		model.TaskTypeFeature,
+		2,
+		true,
+		[]string{"one-flow"},
+	)
+	require.NoError(t, err)
+	task, err = svc.ClaimTask(ctx, task.ID, service.ClaimOptions{Owner: "codex"})
+	require.NoError(t, err)
+	specDoc := &model.Doc{
+		TaskID: task.ID, Title: "Spec", StoragePath: "/tmp/one-flow-spec.md",
+	}
+	require.NoError(t, svc.AddDoc(ctx, specDoc))
+
+	run, resumed, err := svc.StartOrResumeRun(ctx, service.StartRunInput{
+		TaskID:           task.ID,
+		AgentName:        "codex",
+		AgentTool:        model.AgentToolCodex,
+		WorkflowTemplate: model.WorkflowTemplateCSOneFlow,
+	})
+	require.NoError(t, err)
+	require.False(t, resumed)
+	require.Equal(t, model.WorkflowTemplateCSOneFlow, run.WorkflowTemplate)
+	require.Equal(t, 1, run.WorkflowVersion)
+
+	graph, err := svc.GetRunWorkGraph(ctx, run.ID)
+	require.NoError(t, err)
+	require.Equal(t, model.WorkflowTemplateCSOneFlow, graph.Template)
+	require.Len(t, graph.Nodes, 8)
+	require.Equal(t, "requirement-analysis", graph.Nodes[0].Key)
+	require.Equal(t, model.RunNodeReady, graph.Nodes[0].Status)
+	require.Equal(t, model.RunNodePending, graph.Nodes[1].Status)
+	require.Equal(t, 0, graph.CompletedNodeCount)
+	for _, node := range graph.Nodes {
+		require.NotNil(t, node.DependsOn)
+		require.NotNil(t, node.ArtifactIDs)
+	}
+
+	_, err = svc.UpdateRunNode(ctx, service.UpdateRunNodeInput{
+		RunID: run.ID, AgentName: "codex", NodeKey: "implementation",
+		Status: model.RunNodeRunning, Summary: "Tried to skip design.",
+	})
+	require.Error(t, err)
+
+	interrupt, err := svc.CreateRunInterrupt(ctx, service.CreateRunInterruptInput{
+		RunID: run.ID, AgentName: "codex", NodeKey: "requirement-analysis",
+		Kind:    model.RunInterruptApproval,
+		Prompt:  "Confirm the structured PRD and scope.",
+		Options: []string{"approve", "revise"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, model.RunInterruptPending, interrupt.Status)
+
+	graph, err = svc.GetRunWorkGraph(ctx, run.ID)
+	require.NoError(t, err)
+	require.Equal(t, model.RunNodeWaiting, graph.Nodes[0].Status)
+	require.Equal(t, 1, graph.OpenInterruptCount)
+
+	interrupt, err = svc.ResolveRunInterrupt(ctx, service.ResolveRunInterruptInput{
+		InterruptID: interrupt.ID,
+		Response:    "approve",
+		RespondedBy: "yue_zeng",
+	})
+	require.NoError(t, err)
+	require.Equal(t, model.RunInterruptAnswered, interrupt.Status)
+
+	node, err := svc.UpdateRunNode(ctx, service.UpdateRunNodeInput{
+		RunID: run.ID, AgentName: "codex", NodeKey: "requirement-analysis",
+		Status:           model.RunNodeCompleted,
+		Summary:          "Structured PRD confirmed.",
+		NextStep:         "Design the technical solution.",
+		ArtifactIDs:      []string{specDoc.ID},
+		Evidence:         "User approved the structured PRD.",
+		InputFingerprint: "sha256:requirement-v1",
+	})
+	require.NoError(t, err)
+	require.Equal(t, model.RunNodeCompleted, node.Status)
+
+	resume, err := svc.GetTaskResumeContext(ctx, task.ID, "codex")
+	require.NoError(t, err)
+	require.NotNil(t, resume.WorkGraph)
+	require.Equal(t, 1, resume.WorkGraph.CompletedNodeCount)
+	require.Equal(t, 1, resume.WorkGraph.VerifiedNodeCount)
+	require.Equal(t, 1, resume.WorkGraph.ArtifactCount)
+	require.Equal(t, model.RunNodeReady, resume.WorkGraph.Nodes[1].Status)
+	require.Empty(t, resume.WorkGraph.Interrupts)
+}
+
+func TestOneFlowFinalGateRequiresHumanDecisionAndInvalidatesDownstreamReceipts(t *testing.T) {
+	ctx := service.WithActor(context.Background(), "codex")
+	svc := newSvc(t)
+	project, err := svc.CreateProject(ctx, "one-flow-gates", "")
+	require.NoError(t, err)
+	task, err := svc.CreateTask(
+		ctx, project.ID, "Verify graph gates", "", model.TaskTypeFeature, 1, true, nil,
+	)
+	require.NoError(t, err)
+	task, err = svc.ClaimTask(ctx, task.ID, service.ClaimOptions{Owner: "codex"})
+	require.NoError(t, err)
+	run, _, err := svc.StartOrResumeRun(ctx, service.StartRunInput{
+		TaskID: task.ID, AgentName: "codex", AgentTool: model.AgentToolCodex,
+		WorkflowTemplate: model.WorkflowTemplateCSOneFlow,
+	})
+	require.NoError(t, err)
+
+	_, err = svc.UpdateRunNode(ctx, service.UpdateRunNodeInput{
+		RunID: run.ID, AgentName: "codex", NodeKey: "requirement-analysis",
+		Status: model.RunNodeCompleted, Summary: "Invalid artifact must fail.",
+		ArtifactIDs: []string{"not-a-task-artifact"},
+	})
+	require.Error(t, err)
+
+	graph, err := svc.GetRunWorkGraph(ctx, run.ID)
+	require.NoError(t, err)
+	for _, node := range graph.Nodes[:7] {
+		status := model.RunNodeCompleted
+		evidence := node.Title + " verified"
+		if node.Key == "refactor" {
+			status = model.RunNodeSkipped
+			evidence = ""
+		}
+		_, err = svc.UpdateRunNode(ctx, service.UpdateRunNodeInput{
+			RunID: run.ID, AgentName: "codex", NodeKey: node.Key,
+			Status: status, Summary: node.Title + " complete",
+			Evidence: evidence,
+		})
+		require.NoError(t, err)
+	}
+
+	_, err = svc.UpdateRunNode(ctx, service.UpdateRunNodeInput{
+		RunID: run.ID, AgentName: "codex", NodeKey: "final-gate",
+		Status: model.RunNodeCompleted, Summary: "Agent cannot approve itself.",
+	})
+	require.ErrorIs(t, err, store.ErrConflict)
+
+	interrupt, err := svc.CreateRunInterrupt(ctx, service.CreateRunInterruptInput{
+		RunID: run.ID, AgentName: "codex", NodeKey: "final-gate",
+		Kind: model.RunInterruptApproval, Prompt: "Accept verified result?",
+		Options: []string{"accept", "revise"},
+	})
+	require.NoError(t, err)
+	_, err = svc.ResolveRunInterrupt(ctx, service.ResolveRunInterruptInput{
+		InterruptID: interrupt.ID, Response: "accept", RespondedBy: "codex",
+	})
+	require.ErrorIs(t, err, store.ErrConflict)
+	_, err = svc.ResolveRunInterrupt(ctx, service.ResolveRunInterruptInput{
+		InterruptID: interrupt.ID, Response: "accept", RespondedBy: "developer",
+	})
+	require.NoError(t, err)
+	_, err = svc.UpdateRunNode(ctx, service.UpdateRunNodeInput{
+		RunID: run.ID, AgentName: "codex", NodeKey: "final-gate",
+		Status: model.RunNodeCompleted, Summary: "Developer accepted.",
+		Evidence: "Approval recorded by developer.",
+	})
+	require.NoError(t, err)
+	graph, err = svc.GetRunWorkGraph(ctx, run.ID)
+	require.NoError(t, err)
+	require.Equal(t, 7, graph.CompletedNodeCount)
+	require.Equal(t, 7, graph.VerifiedNodeCount)
+	require.Equal(t, 100, graph.ProgressPercent)
+	require.NotNil(t, graph.Interrupts)
+
+	_, err = svc.UpdateRunNode(ctx, service.UpdateRunNodeInput{
+		RunID: run.ID, AgentName: "codex", NodeKey: "requirement-analysis",
+		Status: model.RunNodeRunning, Summary: "Requirement changed.",
+	})
+	require.NoError(t, err)
+	graph, err = svc.GetRunWorkGraph(ctx, run.ID)
+	require.NoError(t, err)
+	require.Equal(t, model.RunNodeRunning, graph.Nodes[0].Status)
+	for _, node := range graph.Nodes[1:] {
+		require.Equal(t, model.RunNodePending, node.Status)
+		require.Empty(t, node.Evidence)
+		require.Empty(t, node.ArtifactIDs)
+	}
+	require.Equal(t, 0, graph.CompletedNodeCount)
+	require.Equal(t, 0, graph.VerifiedNodeCount)
+	require.Equal(t, 0, graph.ArtifactCount)
+
+	for _, node := range graph.Nodes[:7] {
+		status := model.RunNodeCompleted
+		if node.Key == "refactor" {
+			status = model.RunNodeSkipped
+		}
+		_, err = svc.UpdateRunNode(ctx, service.UpdateRunNodeInput{
+			RunID: run.ID, AgentName: "codex", NodeKey: node.Key,
+			Status: status, Summary: node.Title + " rerun complete",
+		})
+		require.NoError(t, err)
+	}
+	_, err = svc.UpdateRunNode(ctx, service.UpdateRunNodeInput{
+		RunID: run.ID, AgentName: "codex", NodeKey: "final-gate",
+		Status: model.RunNodeCompleted, Summary: "Old approval must not apply.",
+	})
+	require.ErrorIs(t, err, store.ErrConflict)
 }
 
 func TestAgentRunRequiresLiveTaskOwnership(t *testing.T) {

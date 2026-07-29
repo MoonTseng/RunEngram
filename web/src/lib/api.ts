@@ -159,6 +159,8 @@ export interface AgentRun {
   project_id: string;
   agent_name: string;
   agent_tool: "codex" | "claude-code" | "pi" | "other";
+  workflow_template: "single-loop" | "cs-one-flow";
+  workflow_version: number;
   status: "running" | "blocked" | "completed" | "failed";
   summary: string;
   next_step: string;
@@ -171,6 +173,65 @@ export interface TaskResumeContext {
   snapshot: ContextSnapshot;
   latest_run?: AgentRun;
   recent_events: TaskEvent[];
+  work_graph?: RunWorkGraph;
+}
+
+export type RunNodeStatus =
+  | "pending"
+  | "ready"
+  | "running"
+  | "waiting"
+  | "completed"
+  | "failed"
+  | "skipped";
+
+export interface RunNode {
+  id: string;
+  run_id: string;
+  key: string;
+  title: string;
+  capability: string;
+  kind: string;
+  position: number;
+  depends_on: string[];
+  status: RunNodeStatus;
+  attempt: number;
+  summary: string;
+  next_step: string;
+  artifact_ids: string[];
+  evidence: string;
+  input_fingerprint: string;
+  started_at: number;
+  completed_at: number;
+  updated_at: number;
+}
+
+export interface RunInterrupt {
+  id: string;
+  run_id: string;
+  node_key: string;
+  kind: "approval" | "question" | "choice" | "conflict";
+  prompt: string;
+  options: string[];
+  status: "pending" | "answered" | "rejected";
+  response: string;
+  requested_by: string;
+  responded_by: string;
+  created_at: number;
+  resolved_at: number;
+}
+
+export interface RunWorkGraph {
+  run_id: string;
+  template: "single-loop" | "cs-one-flow";
+  version: number;
+  nodes: RunNode[];
+  interrupts: RunInterrupt[];
+  completed_node_count: number;
+  verified_node_count: number;
+  artifact_count: number;
+  open_interrupt_count: number;
+  progress_percent: number;
 }
 
 export interface LearningMetrics {
@@ -301,6 +362,18 @@ export async function getTaskResumeContext(taskId: string): Promise<TaskResumeCo
   return request<TaskResumeContext>(
     "GET",
     `/api/v1/tasks/${encodeURIComponent(taskId)}/resume`
+  );
+}
+
+export async function resolveRunInterrupt(
+  interruptId: string,
+  response: string,
+  reject = false
+): Promise<RunInterrupt> {
+  return request<RunInterrupt>(
+    "PATCH",
+    `/api/v1/interrupts/${encodeURIComponent(interruptId)}`,
+    { response, reject }
   );
 }
 

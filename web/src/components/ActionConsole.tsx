@@ -9,12 +9,13 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useTaskResumeContext } from "../hooks/queries";
+import { useResolveRunInterrupt, useTaskResumeContext } from "../hooks/queries";
 import type { LearningMetrics, Project, Task } from "../lib/api";
 import { getLearningMetrics } from "../lib/api";
 import { selectActionFocus, taskPrompt } from "../lib/actionConsole";
 import { useI18n } from "../lib/i18n";
 import { useQuery } from "@tanstack/react-query";
+import { WorkGraphProgress } from "./WorkGraphProgress";
 
 export function ActionConsole({
   project,
@@ -29,13 +30,17 @@ export function ActionConsole({
   error: unknown;
   onNavigate: (view: "kanban" | "knowledge") => void;
 }) {
-  const { stateLabel, t, typeLabel } = useI18n();
+  const { locale, stateLabel, t, typeLabel } = useI18n();
   const [copied, setCopied] = useState(false);
   const focus = useMemo(() => selectActionFocus(tasks), [tasks]);
   const resume = useTaskResumeContext(focus.kind === "active" ? focus.task.id : null);
   const context = resume.data?.snapshot;
   const latestRun = resume.data?.latest_run;
+  const workGraph = resume.data?.work_graph;
   const recalled = context?.suggested_capsules ?? [];
+  const resolveInterrupt = useResolveRunInterrupt(
+    focus.kind === "active" ? focus.task.id : null
+  );
   const metrics = useQuery<LearningMetrics>({
     queryKey: ["learning-metrics", project.id],
     queryFn: () => getLearningMetrics(project.id),
@@ -116,6 +121,40 @@ export function ActionConsole({
               <p className="mt-5 line-clamp-4 text-[15px] leading-7 text-[var(--tl-ink-muted)]">
                 {task.description}
               </p>
+            )}
+
+            {workGraph && (workGraph.nodes ?? []).length > 0 && (
+              <WorkGraphProgress
+                graph={workGraph}
+                locale={locale}
+                recalledCount={recalled.length}
+                artifacts={[
+                  ...(task.docs ?? []).map((doc) => ({
+                    id: doc.id,
+                    title: doc.title,
+                    url: doc.url,
+                  })),
+                  ...(task.links ?? []).map((link) => ({
+                    id: link.id,
+                    title: link.label || link.url,
+                    url: link.url,
+                  })),
+                  ...(task.images ?? []).map((image) => ({
+                    id: image.id,
+                    title: image.filename,
+                    url: image.url,
+                  })),
+                ]}
+                resolving={resolveInterrupt.isPending}
+                error={
+                  resolveInterrupt.isError
+                    ? String(resolveInterrupt.error)
+                    : undefined
+                }
+                onResolve={(interruptId, response, reject) =>
+                  resolveInterrupt.mutate({ interruptId, response, reject })
+                }
+              />
             )}
 
             {focus.kind === "blocked" && (

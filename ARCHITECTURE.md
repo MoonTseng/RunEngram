@@ -97,9 +97,21 @@ learning_notes
 agent_runs  (id, task_id → tasks.id, project_id → projects.id,
              agent_name,
              agent_tool ∈ {codex,claude-code,pi,other},
+             workflow_template ∈ {single-loop,cs-one-flow},
+             workflow_version,
              status ∈ {running,blocked,completed,failed},
              summary, next_step,
              started_at, updated_at, completed_at)
+run_nodes   (id, run_id → agent_runs.id, node_key, title, capability, kind,
+             position, depends_on JSON, status, attempt, summary, next_step,
+             artifact_ids JSON, evidence, input_fingerprint,
+             started_at, completed_at, updated_at)
+run_interrupts
+            (id, run_id → agent_runs.id, node_key,
+             kind ∈ {approval,question,choice,conflict},
+             prompt, options JSON,
+             status ∈ {pending,answered,rejected},
+             response, requested_by, responded_by, created_at, resolved_at)
 ```
 
 Attachment and dependency FKs use `ON DELETE CASCADE`. Cascade is what makes
@@ -125,6 +137,8 @@ Indexes:
   — at most one resumable run per task
 - `idx_agent_runs_task_updated(task_id, updated_at DESC)` — resume lookup
 - `idx_agent_runs_project_status(project_id, status)` — run metrics
+- `idx_run_nodes_run_position(run_id, position)` — ordered Work Graph restore
+- `idx_run_interrupts_run_status(run_id, status)` — pending human decisions
 
 Schema lives twice: once at `server/migrations/0001_init.sql` (for tools
 that read the migration history) and once at
@@ -159,6 +173,36 @@ events live in append-only `task_events` and carry `run_id`:
 `GET /tasks/:id/resume` returns immutable task-start context, latest run, and
 recent events. CLI, Web UI, Codex, Claude Code, Pi, and future adapters consume
 the same protocol; none owns server-side loop semantics.
+
+### Work Graph overlay
+
+`workflow_template=single-loop` preserves the compact run/checkpoint model.
+`workflow_template=cs-one-flow` creates eight ordered `run_nodes`. A node is
+`ready` only when all dependency nodes are `completed` or `skipped`. Agents
+write stage results, artifact IDs, input fingerprints, and evidence through the
+CLI. The server rejects dependency skips and refuses to finish the run while a
+node or human interrupt remains open.
+
+This graph is an outer durability layer, not an Agent engine:
+
+```text
+RunEngram Work Graph
+  requirement → design → plan → implement → refactor → verify → review → gate
+       │            │        │        │          │         │        │
+       └──────── each node contains an ordinary Agent tool loop ────────────┘
+```
+
+The existing `cs-sop-one-flow` skill maps its outputs onto these nodes. Codex,
+Claude Code, or Pi still owns tool selection and iteration inside a node.
+`run_interrupts` model explicit questions or approvals; a human browser or a
+different CLI actor resolves them, after which the same node and run resume.
+The `final-gate` rejects self-approval by the executing Agent. No queue worker
+or second execution runtime is required.
+
+The Action Console derives honest counters from stored receipts:
+`completed_node_count`, `verified_node_count`, unique `artifact_count`, recalled
+memory count, and `open_interrupt_count`. It does not estimate causal time
+savings.
 
 `learning.discovered` is the bridge from execution into learning. It creates a
 pending Learning Note and links its ID back to the run event. Pending notes can

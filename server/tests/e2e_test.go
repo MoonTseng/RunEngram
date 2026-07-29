@@ -1217,7 +1217,6 @@ func TestAgentRunResumeLoopAtAPI(t *testing.T) {
 	status = jsonReqWithToken(t, http.MethodPost, base+"/api/v1/tasks/"+created.ID+"/claim",
 		map[string]any{"lease": "1h"}, &created, token)
 	require.Equal(t, http.StatusOK, status)
-
 	var started struct {
 		Run     model.AgentRun `json:"run"`
 		Resumed bool           `json:"resumed"`
@@ -1267,6 +1266,88 @@ func TestAgentRunResumeLoopAtAPI(t *testing.T) {
 	require.Equal(t, http.StatusOK, status)
 	require.Equal(t, run.ID, resume.LatestRun.ID)
 	require.NotEmpty(t, resume.RecentEvents)
+}
+
+func TestOneFlowWorkGraphAtAPI(t *testing.T) {
+	base, stop := startServer(t)
+	defer stop()
+	token := registerAgent(t, base, "oneflow-api-agent")
+	jsonReq(t, http.MethodPost, base+"/api/v1/projects",
+		map[string]any{"name": "oneflow-api"}, &project{})
+
+	var created task
+	status := jsonReq(t, http.MethodPost, base+"/api/v1/projects/oneflow-api/tasks",
+		map[string]any{
+			"title": "One-flow graph API", "type": "feature", "auto_start": true,
+		}, &created)
+	require.Equal(t, http.StatusCreated, status)
+	status = jsonReqWithToken(t, http.MethodPost, base+"/api/v1/tasks/"+created.ID+"/claim",
+		map[string]any{"lease": "1h"}, &created, token)
+	require.Equal(t, http.StatusOK, status)
+	var specDoc doc
+	status = jsonReq(t, http.MethodPost, base+"/api/v1/tasks/"+created.ID+"/docs",
+		map[string]any{"title": "Spec", "content": "# One-flow scope"}, &specDoc)
+	require.Equal(t, http.StatusCreated, status)
+
+	var started struct {
+		Run     model.AgentRun `json:"run"`
+		Resumed bool           `json:"resumed"`
+	}
+	status = jsonReqWithToken(t, http.MethodPost, base+"/api/v1/tasks/"+created.ID+"/runs",
+		map[string]any{
+			"agent_tool":        "codex",
+			"workflow_template": "cs-one-flow",
+		}, &started, token)
+	require.Equal(t, http.StatusCreated, status)
+	require.Equal(t, model.WorkflowTemplateCSOneFlow, started.Run.WorkflowTemplate)
+
+	var graph model.RunWorkGraph
+	status = jsonReq(t, http.MethodGet, base+"/api/v1/runs/"+started.Run.ID+"/work-graph",
+		nil, &graph)
+	require.Equal(t, http.StatusOK, status)
+	require.Len(t, graph.Nodes, 8)
+	require.Equal(t, "requirement-analysis", graph.Nodes[0].Key)
+	require.Equal(t, model.RunNodeReady, graph.Nodes[0].Status)
+
+	var interrupt model.RunInterrupt
+	status = jsonReqWithToken(t, http.MethodPost, base+"/api/v1/runs/"+started.Run.ID+"/interrupts",
+		map[string]any{
+			"node_key": "requirement-analysis",
+			"kind":     "approval",
+			"prompt":   "范围是否确认？",
+			"options":  []string{"确认", "调整"},
+		}, &interrupt, token)
+	require.Equal(t, http.StatusCreated, status)
+	require.Equal(t, model.RunInterruptPending, interrupt.Status)
+
+	status = jsonReq(t, http.MethodPatch, base+"/api/v1/interrupts/"+interrupt.ID,
+		map[string]any{"response": "确认"}, &interrupt)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, model.RunInterruptAnswered, interrupt.Status)
+
+	var node model.RunNode
+	status = jsonReqWithToken(t, http.MethodPatch,
+		base+"/api/v1/runs/"+started.Run.ID+"/nodes/requirement-analysis",
+		map[string]any{
+			"status":            "completed",
+			"summary":           "范围与验收标准已确认",
+			"next_step":         "进入技术方案",
+			"artifact_ids":      []string{specDoc.ID},
+			"evidence":          "人工确认：确认",
+			"input_fingerprint": "prd-v1",
+		}, &node, token)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, model.RunNodeCompleted, node.Status)
+
+	var resume model.TaskResumeContext
+	status = jsonReq(t, http.MethodGet, base+"/api/v1/tasks/"+created.ID+"/resume",
+		nil, &resume)
+	require.Equal(t, http.StatusOK, status)
+	require.NotNil(t, resume.WorkGraph)
+	require.Equal(t, 1, resume.WorkGraph.CompletedNodeCount)
+	require.Equal(t, 1, resume.WorkGraph.VerifiedNodeCount)
+	require.Equal(t, "technical-design", resume.WorkGraph.Nodes[1].Key)
+	require.Equal(t, model.RunNodeReady, resume.WorkGraph.Nodes[1].Status)
 }
 
 func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {

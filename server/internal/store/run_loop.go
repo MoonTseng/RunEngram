@@ -10,7 +10,7 @@ import (
 )
 
 const agentRunSelectColumns = `
-	id,task_id,project_id,agent_name,agent_tool,status,summary,next_step,
+	id,task_id,project_id,agent_name,agent_tool,status,workflow_template,workflow_version,summary,next_step,
 	started_at,updated_at,completed_at`
 
 type agentRunScanner interface {
@@ -26,6 +26,8 @@ func scanAgentRun(scanner agentRunScanner) (*model.AgentRun, error) {
 		&run.AgentName,
 		&run.AgentTool,
 		&run.Status,
+		&run.WorkflowTemplate,
+		&run.WorkflowVersion,
 		&run.Summary,
 		&run.NextStep,
 		&run.StartedAt,
@@ -42,24 +44,45 @@ func scanAgentRun(scanner agentRunScanner) (*model.AgentRun, error) {
 }
 
 func (s *Store) CreateAgentRun(ctx context.Context, run *model.AgentRun) (*model.AgentRun, error) {
+	return s.CreateAgentRunWithNodes(ctx, run, nil)
+}
+
+func (s *Store) CreateAgentRunWithNodes(
+	ctx context.Context,
+	run *model.AgentRun,
+	nodes []*model.RunNode,
+) (*model.AgentRun, error) {
 	if run == nil {
 		return nil, errors.New("agent run required")
+	}
+	if run.WorkflowTemplate == "" {
+		run.WorkflowTemplate = model.WorkflowTemplateSingleLoop
+	}
+	if run.WorkflowVersion == 0 {
+		run.WorkflowVersion = 1
 	}
 	run.ID = newID()
 	run.StartedAt = now()
 	run.UpdatedAt = run.StartedAt
 	run.CompletedAt = 0
-	_, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO agent_runs(
-			id,task_id,project_id,agent_name,agent_tool,status,summary,next_step,
-			started_at,updated_at,completed_at
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+			id,task_id,project_id,agent_name,agent_tool,status,workflow_template,
+			workflow_version,summary,next_step,started_at,updated_at,completed_at
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		run.ID,
 		run.TaskID,
 		run.ProjectID,
 		run.AgentName,
 		run.AgentTool,
 		run.Status,
+		run.WorkflowTemplate,
+		run.WorkflowVersion,
 		run.Summary,
 		run.NextStep,
 		run.StartedAt,
@@ -73,6 +96,14 @@ func (s *Store) CreateAgentRun(ctx context.Context, run *model.AgentRun) (*model
 		return nil, fmt.Errorf("%w: task %s already has an active run", ErrConflict, run.TaskID)
 	}
 	if err != nil {
+		return nil, err
+	}
+	for _, node := range nodes {
+		if err := insertRunNode(ctx, tx, run.ID, node, run.StartedAt); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return s.GetAgentRun(ctx, run.ID)

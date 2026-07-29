@@ -53,6 +53,12 @@ required_sections = {
         "taskline learning reject",
         "Never capture secrets",
         "human correction",
+        "### One-flow Work Graph",
+        "--workflow cs-one-flow",
+        "taskline run graph <run-id>",
+        "taskline run node <run-id>",
+        "taskline run interrupt <run-id>",
+        "cs-sop-one-flow",
     ],
     ".agents/skills/taskline-localtest/SKILL.md": [
         "### 1. Write the test FIRST",

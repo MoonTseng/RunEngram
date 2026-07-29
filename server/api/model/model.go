@@ -186,6 +186,9 @@ type RunEventKind string
 const (
 	RunEventStarted            RunEventKind = "run.started"
 	RunEventResumed            RunEventKind = "run.resumed"
+	RunEventNodeUpdated        RunEventKind = "workflow.node.updated"
+	RunEventInterruptCreated   RunEventKind = "workflow.interrupt.created"
+	RunEventInterruptResolved  RunEventKind = "workflow.interrupt.resolved"
 	RunEventToolCalled         RunEventKind = "tool.called"
 	RunEventCheckpointSaved    RunEventKind = "checkpoint.saved"
 	RunEventBlocked            RunEventKind = "run.blocked"
@@ -199,7 +202,8 @@ func (k RunEventKind) Valid() bool {
 	switch k {
 	case RunEventStarted, RunEventResumed, RunEventToolCalled,
 		RunEventCheckpointSaved, RunEventBlocked, RunEventVerificationPassed,
-		RunEventLearningDiscovered, RunEventCompleted, RunEventFailed:
+		RunEventLearningDiscovered, RunEventCompleted, RunEventFailed,
+		RunEventNodeUpdated, RunEventInterruptCreated, RunEventInterruptResolved:
 		return true
 	default:
 		return false
@@ -207,17 +211,137 @@ func (k RunEventKind) Valid() bool {
 }
 
 type AgentRun struct {
-	ID          string    `json:"id"`
-	TaskID      string    `json:"task_id"`
-	ProjectID   string    `json:"project_id"`
-	AgentName   string    `json:"agent_name"`
-	AgentTool   AgentTool `json:"agent_tool"`
-	Status      RunStatus `json:"status"`
-	Summary     string    `json:"summary"`
-	NextStep    string    `json:"next_step"`
-	StartedAt   int64     `json:"started_at"`
-	UpdatedAt   int64     `json:"updated_at"`
-	CompletedAt int64     `json:"completed_at"`
+	ID               string           `json:"id"`
+	TaskID           string           `json:"task_id"`
+	ProjectID        string           `json:"project_id"`
+	AgentName        string           `json:"agent_name"`
+	AgentTool        AgentTool        `json:"agent_tool"`
+	Status           RunStatus        `json:"status"`
+	WorkflowTemplate WorkflowTemplate `json:"workflow_template"`
+	WorkflowVersion  int              `json:"workflow_version"`
+	Summary          string           `json:"summary"`
+	NextStep         string           `json:"next_step"`
+	StartedAt        int64            `json:"started_at"`
+	UpdatedAt        int64            `json:"updated_at"`
+	CompletedAt      int64            `json:"completed_at"`
+}
+
+type WorkflowTemplate string
+
+const (
+	WorkflowTemplateSingleLoop WorkflowTemplate = "single-loop"
+	WorkflowTemplateCSOneFlow  WorkflowTemplate = "cs-one-flow"
+)
+
+func (t WorkflowTemplate) Valid() bool {
+	switch t {
+	case WorkflowTemplateSingleLoop, WorkflowTemplateCSOneFlow:
+		return true
+	default:
+		return false
+	}
+}
+
+type RunNodeStatus string
+
+const (
+	RunNodePending   RunNodeStatus = "pending"
+	RunNodeReady     RunNodeStatus = "ready"
+	RunNodeRunning   RunNodeStatus = "running"
+	RunNodeWaiting   RunNodeStatus = "waiting"
+	RunNodeCompleted RunNodeStatus = "completed"
+	RunNodeFailed    RunNodeStatus = "failed"
+	RunNodeSkipped   RunNodeStatus = "skipped"
+)
+
+func (s RunNodeStatus) Valid() bool {
+	switch s {
+	case RunNodePending, RunNodeReady, RunNodeRunning, RunNodeWaiting,
+		RunNodeCompleted, RunNodeFailed, RunNodeSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s RunNodeStatus) SatisfiesDependency() bool {
+	return s == RunNodeCompleted || s == RunNodeSkipped
+}
+
+type RunNode struct {
+	ID               string        `json:"id"`
+	RunID            string        `json:"run_id"`
+	Key              string        `json:"key"`
+	Title            string        `json:"title"`
+	Capability       string        `json:"capability"`
+	Kind             string        `json:"kind"`
+	Position         int           `json:"position"`
+	DependsOn        []string      `json:"depends_on"`
+	Status           RunNodeStatus `json:"status"`
+	Attempt          int           `json:"attempt"`
+	Summary          string        `json:"summary"`
+	NextStep         string        `json:"next_step"`
+	ArtifactIDs      []string      `json:"artifact_ids"`
+	Evidence         string        `json:"evidence"`
+	InputFingerprint string        `json:"input_fingerprint"`
+	StartedAt        int64         `json:"started_at"`
+	CompletedAt      int64         `json:"completed_at"`
+	UpdatedAt        int64         `json:"updated_at"`
+}
+
+type RunInterruptKind string
+
+const (
+	RunInterruptApproval RunInterruptKind = "approval"
+	RunInterruptQuestion RunInterruptKind = "question"
+	RunInterruptChoice   RunInterruptKind = "choice"
+	RunInterruptConflict RunInterruptKind = "conflict"
+)
+
+func (k RunInterruptKind) Valid() bool {
+	switch k {
+	case RunInterruptApproval, RunInterruptQuestion, RunInterruptChoice,
+		RunInterruptConflict:
+		return true
+	default:
+		return false
+	}
+}
+
+type RunInterruptStatus string
+
+const (
+	RunInterruptPending  RunInterruptStatus = "pending"
+	RunInterruptAnswered RunInterruptStatus = "answered"
+	RunInterruptRejected RunInterruptStatus = "rejected"
+)
+
+type RunInterrupt struct {
+	ID          string             `json:"id"`
+	RunID       string             `json:"run_id"`
+	NodeKey     string             `json:"node_key"`
+	Kind        RunInterruptKind   `json:"kind"`
+	Prompt      string             `json:"prompt"`
+	Options     []string           `json:"options"`
+	Status      RunInterruptStatus `json:"status"`
+	Response    string             `json:"response"`
+	RequestedBy string             `json:"requested_by"`
+	RespondedBy string             `json:"responded_by"`
+	CreatedAt   int64              `json:"created_at"`
+	ResolvedAt  int64              `json:"resolved_at"`
+}
+
+type RunWorkGraph struct {
+	RunID              string           `json:"run_id"`
+	Template           WorkflowTemplate `json:"template"`
+	Version            int              `json:"version"`
+	Nodes              []*RunNode       `json:"nodes"`
+	Interrupts         []*RunInterrupt  `json:"interrupts"`
+	CompletedNodeCount int              `json:"completed_node_count"`
+	VerifiedNodeCount  int              `json:"verified_node_count"`
+	ArtifactCount      int              `json:"artifact_count"`
+	OpenInterruptCount int              `json:"open_interrupt_count"`
+	ProgressPercent    int              `json:"progress_percent"`
 }
 
 type RunEvent struct {
@@ -234,6 +358,7 @@ type RunEvent struct {
 type TaskResumeContext struct {
 	Snapshot     ContextSnapshot `json:"snapshot"`
 	LatestRun    *AgentRun       `json:"latest_run,omitempty"`
+	WorkGraph    *RunWorkGraph   `json:"work_graph,omitempty"`
 	RecentEvents []*TaskEvent    `json:"recent_events"`
 }
 

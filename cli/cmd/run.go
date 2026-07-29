@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -23,7 +24,8 @@ var runStartCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentTool, _ := cmd.Flags().GetString("agent-tool")
-		result, err := newClient().StartAgentRun(args[0], agentTool)
+		workflow, _ := cmd.Flags().GetString("workflow")
+		result, err := newClient().StartAgentRunWithWorkflow(args[0], agentTool, workflow)
 		if err != nil {
 			return err
 		}
@@ -35,6 +37,105 @@ var runStartCmd = &cobra.Command{
 			fmt.Fprintf(w, "%s %s run %s for task %s\n",
 				action, result.Run.AgentTool, result.Run.ID, result.Run.TaskID)
 			renderAgentRun(w, result.Run)
+		})
+	},
+}
+
+var runGraphCmd = &cobra.Command{
+	Use:   "graph <run-id>",
+	Short: "Show durable one-flow stage graph and receipts",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(_ *cobra.Command, args []string) error {
+		graph, err := newClient().GetRunWorkGraph(args[0])
+		if err != nil {
+			return err
+		}
+		return output.Render(os.Stdout, output.Resolve(formatFlag), graph, func(w io.Writer) {
+			fmt.Fprintf(w, "%s v%d  %d%%  %d/%d stages  %d verified  %d artifacts\n",
+				graph.Template, graph.Version, graph.ProgressPercent,
+				graph.CompletedNodeCount, len(graph.Nodes),
+				graph.VerifiedNodeCount, graph.ArtifactCount)
+			for _, node := range graph.Nodes {
+				fmt.Fprintf(w, "%-22s  %-10s  %s\n", node.Key, node.Status, node.Title)
+			}
+			for _, interrupt := range graph.Interrupts {
+				fmt.Fprintf(w, "WAITING %s  %s\n", interrupt.NodeKey, interrupt.Prompt)
+			}
+		})
+	},
+}
+
+var runNodeCmd = &cobra.Command{
+	Use:   "node <run-id> <node-key>",
+	Short: "Update one one-flow stage with artifacts and evidence",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		status, _ := cmd.Flags().GetString("status")
+		summary, _ := cmd.Flags().GetString("summary")
+		nextStep, _ := cmd.Flags().GetString("next-step")
+		artifactIDs, _ := cmd.Flags().GetStringSlice("artifact-id")
+		evidence, _ := cmd.Flags().GetString("evidence")
+		evidenceFile, _ := cmd.Flags().GetString("evidence-file")
+		if evidenceFile != "" {
+			content, err := os.ReadFile(evidenceFile)
+			if err != nil {
+				return fmt.Errorf("read --evidence-file: %w", err)
+			}
+			evidence = strings.TrimSpace(string(content))
+		}
+		fingerprint, _ := cmd.Flags().GetString("input-fingerprint")
+		node, err := newClient().UpdateRunNode(args[0], args[1], client.UpdateRunNodeInput{
+			Status: status, Summary: summary, NextStep: nextStep,
+			ArtifactIDs: artifactIDs, Evidence: evidence,
+			InputFingerprint: fingerprint,
+		})
+		if err != nil {
+			return err
+		}
+		return output.Render(os.Stdout, output.Resolve(formatFlag), node, func(w io.Writer) {
+			fmt.Fprintf(w, "%-22s  %-10s  %s\n", node.Key, node.Status, node.Title)
+			if node.Summary != "" {
+				fmt.Fprintf(w, "Receipt: %s\n", node.Summary)
+			}
+		})
+	},
+}
+
+var runInterruptCmd = &cobra.Command{
+	Use:   "interrupt <run-id> <node-key>",
+	Short: "Pause one stage for explicit human input",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		kind, _ := cmd.Flags().GetString("kind")
+		prompt, _ := cmd.Flags().GetString("prompt")
+		options, _ := cmd.Flags().GetStringSlice("option")
+		interrupt, err := newClient().CreateRunInterrupt(
+			args[0], args[1], kind, prompt, options,
+		)
+		if err != nil {
+			return err
+		}
+		return output.Render(os.Stdout, output.Resolve(formatFlag), interrupt, func(w io.Writer) {
+			fmt.Fprintf(w, "%s  %s  %s\n",
+				interrupt.ID, interrupt.NodeKey, interrupt.Prompt)
+		})
+	},
+}
+
+var runRespondCmd = &cobra.Command{
+	Use:   "respond <interrupt-id>",
+	Short: "Resolve a one-flow human interrupt",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		response, _ := cmd.Flags().GetString("response")
+		reject, _ := cmd.Flags().GetBool("reject")
+		interrupt, err := newClient().ResolveRunInterrupt(args[0], response, reject)
+		if err != nil {
+			return err
+		}
+		return output.Render(os.Stdout, output.Resolve(formatFlag), interrupt, func(w io.Writer) {
+			fmt.Fprintf(w, "%s  %s  %s\n",
+				interrupt.ID, interrupt.Status, interrupt.Response)
 		})
 	},
 }
@@ -144,12 +245,34 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 	runCmd.AddCommand(
 		runStartCmd, runEventCmd, runCheckpointCmd, runFinishCmd, runShowCmd,
+		runGraphCmd, runNodeCmd, runInterruptCmd, runRespondCmd,
 	)
 	taskCmd.AddCommand(taskResumeCmd)
 
 	runStartCmd.Flags().String(
 		"agent-tool", "codex", "execution engine: codex|claude-code|pi|other",
 	)
+	runStartCmd.Flags().String(
+		"workflow", "", "workflow: single-loop|cs-one-flow",
+	)
+	runNodeCmd.Flags().String(
+		"status", "running", "pending|ready|running|waiting|completed|failed|skipped",
+	)
+	runNodeCmd.Flags().String("summary", "", "durable stage result")
+	runNodeCmd.Flags().String("next-step", "", "smallest concrete next action")
+	runNodeCmd.Flags().StringSlice("artifact-id", nil, "attached task doc or artifact ID")
+	runNodeCmd.Flags().String("evidence", "", "verification receipt")
+	runNodeCmd.Flags().String("evidence-file", "", "read verification receipt from file")
+	runNodeCmd.Flags().String("input-fingerprint", "", "input version or digest")
+	runInterruptCmd.Flags().String(
+		"kind", "question", "approval|question|choice|conflict",
+	)
+	runInterruptCmd.Flags().String("prompt", "", "human decision request (required)")
+	runInterruptCmd.Flags().StringSlice("option", nil, "allowed response; repeat as needed")
+	_ = runInterruptCmd.MarkFlagRequired("prompt")
+	runRespondCmd.Flags().String("response", "", "human response (required)")
+	runRespondCmd.Flags().Bool("reject", false, "mark response as rejected")
+	_ = runRespondCmd.MarkFlagRequired("response")
 	runEventCmd.Flags().String(
 		"kind", "", "tool.called|verification.passed|learning.discovered (required)",
 	)
