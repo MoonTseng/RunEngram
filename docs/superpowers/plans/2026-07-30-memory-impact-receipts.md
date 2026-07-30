@@ -413,8 +413,9 @@ func (s *Service) recordRecallReceipts(
 ) error
 ```
 
-For each suggested capsule, write `recalled` with recall score/reasons from
-`recall.Explanations`, context revision, and source.
+For each project rule and suggested capsule, write `recalled` with recall
+score/reasons from `recall.Explanations`, context revision, and source. Deduplicate
+capsules that appear in both lists.
 
 Call after:
 
@@ -1148,4 +1149,3 @@ codex plugin add runengram@runengram
 
 Confirm installed plugin version matches manifest and
 `taskline-management` skill help includes impact evidence flags.
-

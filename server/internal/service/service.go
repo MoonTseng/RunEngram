@@ -473,6 +473,9 @@ func (s *Service) UpdateTask(ctx context.Context, id string, u store.TaskUpdate)
 	}, task.UpdatedAt); err != nil {
 		return nil, err
 	}
+	if before.State != model.StateDone && task.State == model.StateDone {
+		_ = s.st.MarkTaskMemoryImpactsUnconfirmed(ctx, task.ID, "system")
+	}
 	return task, nil
 }
 

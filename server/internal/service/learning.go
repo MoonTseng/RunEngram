@@ -62,6 +62,10 @@ type RecordUsageInput struct {
 	TaskID    string
 	Outcome   model.CapsuleOutcome
 	Notes     string
+	Stage     string
+	Evidence  []model.MemoryImpactEvidence
+	Actor     string
+	AgentName string
 }
 
 type CaptureLearningNoteInput struct {
@@ -595,6 +599,14 @@ func (s *Service) UpdateCapsule(ctx context.Context, id string, input UpdateCaps
 func (s *Service) GetOrCreateTaskContext(ctx context.Context, taskID string) (*model.ContextSnapshot, error) {
 	existing, err := s.st.GetContextSnapshot(ctx, taskID)
 	if err == nil {
+		recall := model.MemoryRecall{
+			TaskID: existing.TaskID, ProjectID: existing.ProjectID,
+			ProjectRules: existing.ProjectRules, SuggestedCapsules: existing.SuggestedCapsules,
+			ContextRevision: existing.ContextRevision, Explanations: existing.Explanations,
+		}
+		if err := s.recordRecallReceipts(ctx, existing.Task, recall, "task-context"); err != nil {
+			return nil, err
+		}
 		return existing, nil
 	}
 	if !errors.Is(err, store.ErrNotFound) {
@@ -619,7 +631,14 @@ func (s *Service) GetOrCreateTaskContext(ctx context.Context, taskID string) (*m
 		ProjectRules: recall.ProjectRules, SuggestedCapsules: recall.SuggestedCapsules,
 		ContextRevision: recall.ContextRevision, Explanations: recall.Explanations,
 	}
-	return s.st.CreateContextSnapshot(ctx, snapshot)
+	created, err := s.st.CreateContextSnapshot(ctx, snapshot)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.recordRecallReceipts(ctx, *task, recall, "task-context"); err != nil {
+		return nil, err
+	}
+	return created, nil
 }
 
 func (s *Service) RecallTaskMemory(
@@ -644,6 +663,9 @@ func (s *Service) RecallTaskMemory(
 		return nil, err
 	}
 	recall := buildMemoryRecall(*task, capsules, query)
+	if err := s.recordRecallReceipts(ctx, *task, recall, "dynamic-recall"); err != nil {
+		return nil, err
+	}
 	return &recall, nil
 }
 
@@ -662,19 +684,50 @@ func (s *Service) RecordCapsuleUsage(ctx context.Context, input RecordUsageInput
 	if capsule.ProjectID != task.ProjectID {
 		return nil, fmt.Errorf("%w: capsule and task belong to different projects", store.ErrConflict)
 	}
-	usage, err := s.st.UpsertCapsuleUsage(ctx, &model.CapsuleUsage{
-		CapsuleID: capsule.ID, TaskID: task.ID, Outcome: input.Outcome, Notes: strings.TrimSpace(input.Notes),
+	impacts, err := s.st.ListMemoryImpacts(ctx, store.MemoryImpactFilter{
+		TaskID: task.ID, CapsuleID: capsule.ID, Limit: 1,
 	})
 	if err != nil {
 		return nil, err
 	}
-	if input.Outcome == model.CapsuleOutcomeStale {
-		status := model.CapsuleStatusStale
-		if _, err := s.st.UpdateCapsule(ctx, capsule.ID, store.CapsuleUpdate{Status: &status}); err != nil {
+	var impact *model.MemoryImpact
+	if len(impacts) == 0 {
+		impact, err = s.st.UpsertMemoryImpactRecall(ctx, &model.MemoryImpact{
+			ProjectID: task.ProjectID, TaskID: task.ID, CapsuleID: capsule.ID,
+			State: model.MemoryImpactRecalled, RecallSource: "legacy-usage",
+		})
+		if err != nil {
 			return nil, err
 		}
+	} else {
+		impact = &impacts[0]
 	}
-	return usage, nil
+	state := model.MemoryImpactApplied
+	switch input.Outcome {
+	case model.CapsuleOutcomeHelpful:
+		state = model.MemoryImpactHelpful
+	case model.CapsuleOutcomeRejected:
+		state = model.MemoryImpactRejected
+	case model.CapsuleOutcomeStale:
+		state = model.MemoryImpactStale
+	}
+	evidence := input.Evidence
+	if state.Terminal() && len(evidence) == 0 {
+		evidence = []model.MemoryImpactEvidence{{
+			Kind: "observation", Ref: "legacy-capsule-usage",
+			Summary: strings.TrimSpace(input.Notes),
+		}}
+	}
+	if _, err := s.RecordMemoryImpact(ctx, RecordMemoryImpactInput{
+		ImpactID: impact.ID, State: state, Stage: input.Stage,
+		Notes: input.Notes, Evidence: evidence, Actor: input.Actor,
+		AgentName: input.AgentName, ExpectedUpdatedAt: impact.UpdatedAt,
+	}); err != nil {
+		return nil, err
+	}
+	return s.st.UpsertCapsuleUsage(ctx, &model.CapsuleUsage{
+		CapsuleID: capsule.ID, TaskID: task.ID, Outcome: input.Outcome, Notes: strings.TrimSpace(input.Notes),
+	})
 }
 
 func (s *Service) GetLearningMetrics(ctx context.Context, projectID string) (*model.LearningMetrics, error) {
