@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { LearningNote, MemoryClass } from "../lib/api";
+import { I18nProvider } from "../lib/i18n";
 import { LearningEvidenceReview } from "./LearningEvidenceReview";
 
 const note: LearningNote = {
@@ -112,18 +113,27 @@ function renderReview(
   options: {
     onPromote?: (evidence: string, memoryClass: MemoryClass) => Promise<void>;
     taskFails?: boolean;
+    locale?: "zh-CN";
   } = {}
 ) {
+  if (options.locale === "zh-CN") {
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      language: "zh-CN",
+      languages: ["zh-CN", "zh"],
+    });
+  }
   stubSourceMaterial({ taskFails: options.taskFails });
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const onPromote = options.onPromote ?? vi.fn().mockResolvedValue(undefined);
-  render(
+  const view = (
     <QueryClientProvider client={queryClient}>
       <LearningEvidenceReview note={note} onPromote={onPromote} onCancel={vi.fn()} />
     </QueryClientProvider>
   );
+  render(options.locale === "zh-CN" ? <I18nProvider>{view}</I18nProvider> : view);
   return { onPromote };
 }
 
@@ -221,5 +231,25 @@ describe("LearningEvidenceReview", () => {
     const evidence = screen.getByLabelText("What did you verify?") as HTMLTextAreaElement;
     await user.type(evidence, "Reviewed existing Gradle grouping in build.gradle.");
     expect(evidence.value).toBe("Reviewed existing Gradle grouping in build.gradle.");
+  });
+
+  it("renders Chinese guidance and keeps referenced evidence incomplete", async () => {
+    const user = userEvent.setup();
+    renderReview({ locale: "zh-CN" });
+
+    expect(
+      screen.getByRole("heading", { name: "确认这条经验是否可靠" })
+    ).toBeTruthy();
+    await user.click(await screen.findByRole("button", { name: /Spec.md/ }));
+
+    const evidence = screen.getByLabelText("你验证了什么？") as HTMLTextAreaElement;
+    expect(evidence.value).toContain('核对对象: 文档 "Spec.md"');
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "确认有效并用于后续任务",
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
   });
 });

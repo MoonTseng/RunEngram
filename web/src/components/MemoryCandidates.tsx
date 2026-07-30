@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { LearningNote } from "../lib/api";
 import type { MemoryClass, UpdateLearningNoteInput } from "../lib/api";
 import { useI18n } from "../lib/i18n";
+import { LearningEvidenceReview } from "./LearningEvidenceReview";
 
 export function MemoryCandidates({
   notes,
@@ -24,8 +25,6 @@ export function MemoryCandidates({
   const [saving, setSaving] = useState(false);
   const [reviewingID, setReviewingID] = useState<string | null>(null);
   const [rejectingID, setRejectingID] = useState<string | null>(null);
-  const [memoryClass, setMemoryClass] = useState<MemoryClass>("experience");
-  const [evidence, setEvidence] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
   const [error, setError] = useState("");
   if (notes.length === 0) {
@@ -129,8 +128,6 @@ export function MemoryCandidates({
                   onClick={() => {
                     setReviewingID(note.id);
                     setRejectingID(null);
-                    setMemoryClass("experience");
-                    setEvidence("");
                     setError("");
                   }}
                 >
@@ -152,56 +149,17 @@ export function MemoryCandidates({
             </>
           )}
           {reviewingID === note.id && (
-            <form
-              className="mt-4 space-y-3 rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-bg-quiet)] p-4"
-              onSubmit={async (event) => {
-                event.preventDefault();
-                setSaving(true);
-                setError("");
-                try {
-                  await onPromote(note.id, evidence, memoryClass);
-                  setReviewingID(null);
-                } catch (reviewError) {
-                  setError(String(reviewError));
-                } finally {
-                  setSaving(false);
-                }
+            <LearningEvidenceReview
+              note={note}
+              onPromote={async (nextEvidence, nextMemoryClass) => {
+                await onPromote(note.id, nextEvidence, nextMemoryClass);
+                setReviewingID(null);
               }}
-            >
-              <p className="text-sm text-[var(--tl-ink-muted)]">{t("knowledge.reviewHint")}</p>
-              <label className="block text-sm font-semibold">
-                {t("knowledge.memoryClass")}
-                <select
-                  aria-label={t("knowledge.memoryClass")}
-                  value={memoryClass}
-                  onChange={(event) => setMemoryClass(event.target.value as MemoryClass)}
-                  className="mt-1 h-10 w-full rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-surface)] px-3 font-normal"
-                >
-                  <option value="experience">{t("knowledge.scopedExperience")}</option>
-                  <option value="project-rule">{t("knowledge.projectRule")}</option>
-                </select>
-              </label>
-              <label className="block text-sm font-semibold">
-                {t("knowledge.validationEvidence")}
-                <textarea
-                  aria-label={t("knowledge.validationEvidence")}
-                  required
-                  value={evidence}
-                  placeholder={t("knowledge.validationEvidenceHint")}
-                  onChange={(event) => setEvidence(event.target.value)}
-                  className="mt-1 min-h-28 w-full rounded-lg border border-[var(--tl-outline)] bg-[var(--tl-surface)] p-3 font-normal"
-                />
-              </label>
-              {error && <p className="text-sm text-[var(--tl-rust)]">{error}</p>}
-              <div className="flex gap-2">
-                <button type="submit" className="primary-button" disabled={saving}>
-                  {saving ? t("actions.saving") : t("knowledge.confirmEnable")}
-                </button>
-                <button type="button" className="secondary-button" onClick={() => setReviewingID(null)}>
-                  {t("actions.cancel")}
-                </button>
-              </div>
-            </form>
+              onCancel={() => {
+                setReviewingID(null);
+                setError("");
+              }}
+            />
           )}
           {rejectingID === note.id && (
             <form

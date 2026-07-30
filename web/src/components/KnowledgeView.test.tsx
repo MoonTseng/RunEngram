@@ -83,6 +83,39 @@ describe("KnowledgeView", () => {
           { status: 200, headers: { "Content-Type": "application/json" } }
         );
       }
+      if (url.endsWith("/api/v1/tasks/task-1") && init?.method === "GET") {
+        return new Response(
+          JSON.stringify({
+            id: "task-1",
+            project_id: project.id,
+            title: "Import Notion requirement",
+            description: "",
+            type: "feature",
+            state: "done",
+            priority: 1,
+            labels: [],
+            docs: [
+              {
+                id: "doc-1",
+                task_id: "task-1",
+                title: "PRD.md",
+                created_at: 1,
+                updated_at: 1,
+              },
+            ],
+            links: [],
+            created_at: 1,
+            updated_at: 1,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      if (url.endsWith("/api/v1/tasks/task-1/events") && init?.method === "GET") {
+        return new Response(JSON.stringify({ events: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (url.includes("/learning-metrics")) {
         return new Response(
           JSON.stringify({
@@ -168,12 +201,19 @@ describe("KnowledgeView", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Validate & enable" }));
+    expect(
+      screen.getByRole("heading", {
+        name: "Confirm whether this experience is reliable",
+      })
+    ).toBeTruthy();
     await user.selectOptions(screen.getByLabelText("Memory type"), "project-rule");
     await user.type(
-      screen.getByLabelText("Validation evidence"),
-      "Maintainer verified requirement import output."
+      screen.getByLabelText("What did you verify?"),
+      "Maintainer reviewed requirement import output and confirmed matching scope."
     );
-    await user.click(screen.getByRole("button", { name: "Confirm enable" }));
+    await user.click(
+      screen.getByRole("button", { name: "Verify and use in later tasks" })
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/learning-notes/note-1/promote"),
       expect.objectContaining({
