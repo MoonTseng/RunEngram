@@ -61,6 +61,12 @@ func TestTaskContextCreatesRecallReceipts(t *testing.T) {
 	require.Equal(t, model.MemoryImpactRecalled, impacts[0].State)
 	require.Equal(t, "task-context", impacts[0].RecallSource)
 	require.Equal(t, snapshot.ContextRevision, impacts[0].ContextRevision)
+
+	metrics, err := svc.GetLearningMetrics(ctx, task.ProjectID)
+	require.NoError(t, err)
+	require.Equal(t, 1, metrics.RecalledTaskCount)
+	require.Equal(t, 1, metrics.RecalledMemoryCount)
+	require.Equal(t, 1.0, metrics.RecallCoverageRate)
 }
 
 func TestDynamicRecallUpsertsWithoutResettingAppliedReceipt(t *testing.T) {

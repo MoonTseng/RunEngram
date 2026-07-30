@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   getLearningMetrics,
+  listCapsuleMemoryImpacts,
   listCapsules,
   listLearningNotes,
   promoteLearningNote,
@@ -18,6 +19,7 @@ import { MemoryCandidates } from "./MemoryCandidates";
 import { MemoryDetail } from "./MemoryDetail";
 import { MemoryList } from "./MemoryList";
 import { MemoryMetrics } from "./MemoryMetrics";
+import { MemoryImpactFunnel } from "./MemoryImpactFunnel";
 
 type MemoryTab = "verified" | "pending" | "stale";
 
@@ -62,6 +64,11 @@ export function KnowledgeView({ project }: { project: Project }) {
       return ordered[0] ?? null;
     });
   }, [ordered]);
+  const impacts = useQuery({
+    queryKey: ["memory-impacts", "capsule", selected?.id],
+    queryFn: () => listCapsuleMemoryImpacts(selected!.id),
+    enabled: Boolean(selected),
+  });
 
   const tabs: { id: MemoryTab; label: string; count: number }[] = [
     { id: "verified", label: t("knowledge.verified"), count: metrics.data?.active_capsule_count ?? 0 },
@@ -78,6 +85,7 @@ export function KnowledgeView({ project }: { project: Project }) {
           <p className="mt-2 max-w-4xl text-base leading-7 text-[var(--tl-ink-muted)]">{t("knowledge.subtitle")}</p>
         </header>
 
+        <MemoryImpactFunnel metrics={metrics.data} />
         <MemoryMetrics metrics={metrics.data} />
 
         <section className="panel p-2">
@@ -152,6 +160,9 @@ export function KnowledgeView({ project }: { project: Project }) {
                 <MemoryDetail
                   capsule={selected}
                   capsules={ordered}
+                  impacts={impacts.data ?? []}
+                  impactsLoading={impacts.isLoading}
+                  impactsError={impacts.isError ? String(impacts.error) : ""}
                   onUpdated={async (updated) => {
                     setSelected(updated);
                     await Promise.all([capsules.refetch(), metrics.refetch()]);

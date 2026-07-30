@@ -311,6 +311,15 @@ export interface LearningMetrics {
   stale_count: number;
   helpful_rate: number;
   promotion_rate: number;
+  recalled_task_count: number;
+  recalled_memory_count: number;
+  applied_task_count: number;
+  helpful_task_count: number;
+  ignored_count: number;
+  unconfirmed_count: number;
+  recall_coverage_rate: number;
+  application_rate: number;
+  confirmation_rate: number;
   run_count: number;
   completed_run_count: number;
   active_run_count: number;
@@ -318,6 +327,57 @@ export interface LearningMetrics {
   resumed_run_count: number;
   run_completion_rate: number;
   recovery_rate: number;
+}
+
+export type MemoryImpactState =
+  | "recalled"
+  | "applied"
+  | "ignored"
+  | "helpful"
+  | "rejected"
+  | "stale"
+  | "unconfirmed";
+
+export type MemoryImpactEvidenceKind =
+  | "command"
+  | "task-doc"
+  | "task-event"
+  | "link"
+  | "code-reference"
+  | "observation";
+
+export interface MemoryImpactEvidence {
+  kind: MemoryImpactEvidenceKind;
+  ref: string;
+  summary: string;
+}
+
+export interface MemoryImpact {
+  id: string;
+  project_id: string;
+  task_id: string;
+  capsule_id: string;
+  state: MemoryImpactState;
+  recall_source: string;
+  context_revision: string;
+  recall_score: number;
+  recall_reasons: string[];
+  stage: string;
+  notes: string;
+  evidence: MemoryImpactEvidence[];
+  actor: string;
+  created_at: number;
+  updated_at: number;
+  resolved_at: number;
+}
+
+export interface UpdateMemoryImpactInput {
+  state: MemoryImpactState;
+  stage: string;
+  notes: string;
+  evidence: MemoryImpactEvidence[];
+  expected_updated_at: number;
+  actor?: string;
 }
 
 export interface TaskImage {
@@ -495,6 +555,37 @@ export async function getLearningMetrics(
   return request<LearningMetrics>(
     "GET",
     `/api/v1/projects/${encodeURIComponent(projectIdOrName)}/learning-metrics`
+  );
+}
+
+export async function listCapsuleMemoryImpacts(
+  capsuleId: string,
+  limit = 100
+): Promise<MemoryImpact[]> {
+  return request<MemoryImpact[]>(
+    "GET",
+    `/api/v1/capsules/${encodeURIComponent(capsuleId)}/memory-impacts?limit=${limit}`
+  );
+}
+
+export async function listTaskMemoryImpacts(
+  taskId: string,
+  limit = 100
+): Promise<MemoryImpact[]> {
+  return request<MemoryImpact[]>(
+    "GET",
+    `/api/v1/tasks/${encodeURIComponent(taskId)}/memory-impacts?limit=${limit}`
+  );
+}
+
+export async function updateMemoryImpact(
+  impactId: string,
+  input: UpdateMemoryImpactInput
+): Promise<MemoryImpact> {
+  return request<MemoryImpact>(
+    "PATCH",
+    `/api/v1/memory-impacts/${encodeURIComponent(impactId)}`,
+    input
   );
 }
 

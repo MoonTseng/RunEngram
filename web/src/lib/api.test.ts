@@ -8,6 +8,8 @@ import {
   getTaskDoc,
   getTaskContext,
   listLearningNotes,
+  listCapsuleMemoryImpacts,
+  listTaskMemoryImpacts,
   listTaskEvents,
   searchTasks,
   STATE_LABELS,
@@ -15,11 +17,67 @@ import {
   taskDocContentURL,
   taskImageURL,
   updateTask,
+  updateMemoryImpact,
   updateTaskDoc,
   uploadTaskImage,
   type TaskDoc,
   type TaskImage,
+  type UpdateMemoryImpactInput,
 } from "./api";
+
+describe("memory impact helpers", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("loads capsule and task history with encoded ids", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () =>
+      new Response("[]", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listCapsuleMemoryImpacts("capsule/one");
+    await listTaskMemoryImpacts("task/one");
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/capsules/capsule%2Fone/memory-impacts?limit=100",
+      "/api/v1/tasks/task%2Fone/memory-impacts?limit=100",
+    ]);
+  });
+
+  it("updates a receipt with optimistic concurrency and evidence", async () => {
+    const input: UpdateMemoryImpactInput = {
+      state: "helpful" as const,
+      stage: "test",
+      notes: "Rule prevented unsupported build.",
+      evidence: [
+        {
+          kind: "task-doc",
+          ref: "doc:test-report",
+          summary: "Report confirms no Gradle command ran.",
+        },
+      ],
+      expected_updated_at: 42,
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "impact-1", ...input }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateMemoryImpact("impact/one", input);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/memory-impacts/impact%2Fone",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify(input) })
+    );
+  });
+});
 
 describe("task states", () => {
   it("includes the local test stage between dev and review", () => {

@@ -13,16 +13,21 @@ import {
   deleteMemoryRelation,
   updateCapsule,
   type ExplorationCapsule,
+  type MemoryImpact,
   type MemoryRelationTargetKind,
   type MemoryRelationType,
 } from "../lib/api";
 import { useI18n } from "../lib/i18n";
+import { MemoryImpactHistory } from "./MemoryImpactHistory";
 
 interface MemoryDetailProps {
   capsule: ExplorationCapsule | null;
   capsules?: ExplorationCapsule[];
   onUpdated?: (capsule: ExplorationCapsule) => void;
   onRelationsChanged?: () => void;
+  impacts?: MemoryImpact[];
+  impactsLoading?: boolean;
+  impactsError?: string;
 }
 
 const relationTypes: MemoryRelationType[] = [
@@ -46,6 +51,9 @@ export function MemoryDetail({
   capsules = [],
   onUpdated,
   onRelationsChanged,
+  impacts = [],
+  impactsLoading = false,
+  impactsError = "",
 }: MemoryDetailProps) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -487,6 +495,20 @@ export function MemoryDetail({
           >
             <Link2 size={16} /> {t("knowledge.addRelation")}
           </button>
+        </div>
+      </section>
+
+      <section className="mt-5 border-t border-[var(--tl-outline)] pt-5">
+        <h3 className="font-bold">{t("knowledge.impactHistory")}</h3>
+        <p className="mt-1 text-sm leading-6 text-[var(--tl-ink-muted)]">
+          {t("knowledge.impactHistoryHint")}
+        </p>
+        <div className="mt-3">
+          <MemoryImpactHistory
+            impacts={impacts}
+            loading={impactsLoading}
+            error={impactsError}
+          />
         </div>
       </section>
 

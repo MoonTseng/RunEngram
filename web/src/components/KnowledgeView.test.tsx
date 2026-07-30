@@ -132,6 +132,15 @@ describe("KnowledgeView", () => {
             stale_count: 0,
             helpful_rate: 1,
             promotion_rate: 0.8,
+            recalled_task_count: 3,
+            recalled_memory_count: 5,
+            applied_task_count: 2,
+            helpful_task_count: 1,
+            ignored_count: 1,
+            unconfirmed_count: 1,
+            recall_coverage_rate: 1,
+            application_rate: 2 / 3,
+            confirmation_rate: 0.5,
             run_count: 5,
             completed_run_count: 4,
             active_run_count: 1,
@@ -182,13 +191,16 @@ describe("KnowledgeView", () => {
 
     await user.click(await screen.findByRole("tab", { name: /Pending review/ }));
     expect(await screen.findByText("Use project/requirement-import")).toBeTruthy();
-    expect(screen.getAllByText("Pending review")).toHaveLength(2);
+    expect(screen.getAllByText("Pending review")).toHaveLength(1);
     expect(screen.getAllByText("Verified")).toHaveLength(2);
     expect(screen.getByText(/Human correction/)).toBeTruthy();
     expect(screen.getByText("Agent runs")).toBeTruthy();
     expect(screen.getByText("5")).toBeTruthy();
     expect(screen.getByText("Recovery rate")).toBeTruthy();
-    expect(screen.getByText("50%")).toBeTruthy();
+    expect(screen.getAllByText("50%")).toHaveLength(2);
+    expect(screen.getByText("3 tasks recalled memory")).toBeTruthy();
+    expect(screen.getByText("2 tasks applied memory")).toBeTruthy();
+    expect(screen.getByText("1 task confirmed helpful")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Edit" }));
     const guidance = screen.getByLabelText("Reusable guidance");

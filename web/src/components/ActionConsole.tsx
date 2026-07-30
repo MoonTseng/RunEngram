@@ -11,10 +11,15 @@ import {
 import { useMemo, useState } from "react";
 import { useResolveRunInterrupt, useTaskResumeContext } from "../hooks/queries";
 import type { LearningMetrics, Project, Task } from "../lib/api";
-import { getLearningMetrics } from "../lib/api";
+import {
+  getLearningMetrics,
+  listTaskMemoryImpacts,
+  updateMemoryImpact,
+} from "../lib/api";
 import { selectActionFocus, taskPrompt } from "../lib/actionConsole";
 import { useI18n } from "../lib/i18n";
 import { useQuery } from "@tanstack/react-query";
+import { TaskMemoryImpactPanel } from "./TaskMemoryImpactPanel";
 import { WorkGraphProgress } from "./WorkGraphProgress";
 
 export function ActionConsole({
@@ -33,7 +38,10 @@ export function ActionConsole({
   const { locale, stateLabel, t, typeLabel } = useI18n();
   const [copied, setCopied] = useState(false);
   const focus = useMemo(() => selectActionFocus(tasks), [tasks]);
-  const resume = useTaskResumeContext(focus.kind === "active" ? focus.task.id : null);
+  const focusTaskID = focus.kind === "empty" ? null : focus.task.id;
+  const resume = useTaskResumeContext(
+    focus.kind === "active" || focus.kind === "outcome" ? focus.task.id : null
+  );
   const context = resume.data?.snapshot;
   const latestRun = resume.data?.latest_run;
   const workGraph = resume.data?.work_graph;
@@ -45,6 +53,11 @@ export function ActionConsole({
   const metrics = useQuery<LearningMetrics>({
     queryKey: ["learning-metrics", project.id],
     queryFn: () => getLearningMetrics(project.id),
+  });
+  const impacts = useQuery({
+    queryKey: ["memory-impacts", "task", focusTaskID],
+    queryFn: () => listTaskMemoryImpacts(focusTaskID!),
+    enabled: Boolean(focusTaskID),
   });
 
   if (loading) {
@@ -264,6 +277,34 @@ export function ActionConsole({
                 })}
               </div>
             )}
+            <div className="mt-5 border-t border-[var(--tl-outline)] pt-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-bold">{t("action.impactTitle")}</h3>
+                <span className="status-chip">
+                  {(impacts.data ?? []).filter((impact) =>
+                    ["applied", "helpful", "rejected", "stale"].includes(impact.state)
+                  ).length}
+                  /{impacts.data?.length ?? 0}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-[var(--tl-ink-muted)]">
+                {t("action.impactHint")}
+              </p>
+              {impacts.isLoading ? (
+                <MemoryEmpty text={t("knowledge.impactHistoryLoading")} />
+              ) : impacts.isError ? (
+                <MemoryEmpty text={String(impacts.error)} />
+              ) : (
+                <TaskMemoryImpactPanel
+                  impacts={impacts.data ?? []}
+                  capsules={recalled}
+                  onUpdate={async (impactID, input) => {
+                    await updateMemoryImpact(impactID, input);
+                    await Promise.all([impacts.refetch(), metrics.refetch()]);
+                  }}
+                />
+              )}
+            </div>
             <button type="button" className="mt-4 text-sm font-semibold text-[var(--tl-primary)] hover:underline" onClick={() => onNavigate("knowledge")}>
               {t("action.openMemory")} →
             </button>

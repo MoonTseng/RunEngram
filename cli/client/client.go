@@ -221,26 +221,35 @@ type RecordCapsuleUsageInput struct {
 }
 
 type LearningMetrics struct {
-	CapsuleCount       int     `json:"capsule_count"`
-	ActiveCapsuleCount int     `json:"active_capsule_count"`
-	LearningNoteCount  int     `json:"learning_note_count"`
-	PendingNoteCount   int     `json:"pending_note_count"`
-	PromotedNoteCount  int     `json:"promoted_note_count"`
-	RejectedNoteCount  int     `json:"rejected_note_count"`
-	SnapshotTaskCount  int     `json:"snapshot_task_count"`
-	ReusedTaskCount    int     `json:"reused_task_count"`
-	HelpfulCount       int     `json:"helpful_count"`
-	RejectedCount      int     `json:"rejected_count"`
-	StaleCount         int     `json:"stale_count"`
-	HelpfulRate        float64 `json:"helpful_rate"`
-	PromotionRate      float64 `json:"promotion_rate"`
-	RunCount           int     `json:"run_count"`
-	CompletedRunCount  int     `json:"completed_run_count"`
-	ActiveRunCount     int     `json:"active_run_count"`
-	BlockedRunCount    int     `json:"blocked_run_count"`
-	ResumedRunCount    int     `json:"resumed_run_count"`
-	RunCompletionRate  float64 `json:"run_completion_rate"`
-	RecoveryRate       float64 `json:"recovery_rate"`
+	CapsuleCount        int     `json:"capsule_count"`
+	ActiveCapsuleCount  int     `json:"active_capsule_count"`
+	LearningNoteCount   int     `json:"learning_note_count"`
+	PendingNoteCount    int     `json:"pending_note_count"`
+	PromotedNoteCount   int     `json:"promoted_note_count"`
+	RejectedNoteCount   int     `json:"rejected_note_count"`
+	SnapshotTaskCount   int     `json:"snapshot_task_count"`
+	ReusedTaskCount     int     `json:"reused_task_count"`
+	HelpfulCount        int     `json:"helpful_count"`
+	RejectedCount       int     `json:"rejected_count"`
+	StaleCount          int     `json:"stale_count"`
+	HelpfulRate         float64 `json:"helpful_rate"`
+	PromotionRate       float64 `json:"promotion_rate"`
+	RecalledTaskCount   int     `json:"recalled_task_count"`
+	RecalledMemoryCount int     `json:"recalled_memory_count"`
+	AppliedTaskCount    int     `json:"applied_task_count"`
+	HelpfulTaskCount    int     `json:"helpful_task_count"`
+	IgnoredCount        int     `json:"ignored_count"`
+	UnconfirmedCount    int     `json:"unconfirmed_count"`
+	RecallCoverageRate  float64 `json:"recall_coverage_rate"`
+	ApplicationRate     float64 `json:"application_rate"`
+	ConfirmationRate    float64 `json:"confirmation_rate"`
+	RunCount            int     `json:"run_count"`
+	CompletedRunCount   int     `json:"completed_run_count"`
+	ActiveRunCount      int     `json:"active_run_count"`
+	BlockedRunCount     int     `json:"blocked_run_count"`
+	ResumedRunCount     int     `json:"resumed_run_count"`
+	RunCompletionRate   float64 `json:"run_completion_rate"`
+	RecoveryRate        float64 `json:"recovery_rate"`
 }
 
 type CaptureLearningNoteInput struct {

@@ -708,6 +708,23 @@ func (s *Service) GetLearningMetrics(ctx context.Context, projectID string) (*mo
 	if err != nil {
 		return nil, err
 	}
+	if err := s.ReconcileMemoryImpacts(ctx, project.ID); err != nil {
+		return nil, err
+	}
+	impactMetrics, err := s.st.GetMemoryImpactMetrics(ctx, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	metrics.RecalledTaskCount = impactMetrics.RecalledTaskCount
+	metrics.RecalledMemoryCount = impactMetrics.RecalledMemoryCount
+	metrics.AppliedTaskCount = impactMetrics.AppliedTaskCount
+	metrics.HelpfulTaskCount = impactMetrics.HelpfulTaskCount
+	metrics.IgnoredCount = impactMetrics.IgnoredCount
+	metrics.UnconfirmedCount = impactMetrics.UnconfirmedCount
+	metrics.RecallCoverageRate = impactMetrics.RecallCoverageRate
+	metrics.ApplicationRate = impactMetrics.ApplicationRate
+	metrics.ConfirmationRate = impactMetrics.ConfirmationRate
+	metrics.ReusedTaskCount = impactMetrics.AppliedTaskCount
 	runMetrics, err := s.st.GetRunMetrics(ctx, project.ID)
 	if err != nil {
 		return nil, err
