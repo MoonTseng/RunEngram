@@ -173,7 +173,7 @@ func (h *Handler) registerAgent(ctx context.Context, c *app.RequestContext) {
 	}
 	if agent != nil {
 		writeError(c, http.StatusConflict, fmt.Errorf(
-			"already registered as %s; run taskline status to inspect the current identity; remove .config/taskline/agent.json before intentional re-registration",
+			"already registered as %s; run runengram status to inspect the current identity; remove .config/taskline/agent.json before intentional re-registration",
 			agent.Name,
 		))
 		return
@@ -753,7 +753,7 @@ func (h *Handler) nextRunnableTask(ctx context.Context, c *app.RequestContext) {
 	var t *model.Task
 	if claim {
 		if agent == nil {
-			writeError(c, http.StatusUnauthorized, errors.New("agent token required: run taskline register --name <agent>"))
+			writeError(c, http.StatusUnauthorized, errors.New("agent token required: run runengram register --name <agent>"))
 			return
 		}
 		lease, parseErr := parseLease(strings.TrimSpace(string(c.Query("lease"))))
@@ -970,7 +970,7 @@ func (h *Handler) releaseTask(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	if !req.Force && agent == nil {
-		writeError(c, http.StatusUnauthorized, errors.New("agent token required: run taskline register --name <agent>"))
+		writeError(c, http.StatusUnauthorized, errors.New("agent token required: run runengram register --name <agent>"))
 		return
 	}
 	owner := ""
@@ -1342,7 +1342,7 @@ func (h *Handler) requireAgent(ctx context.Context, c *app.RequestContext) (*mod
 		return nil, false
 	}
 	if agent == nil {
-		writeError(c, http.StatusUnauthorized, errors.New("agent token required: run taskline register --name <agent>"))
+		writeError(c, http.StatusUnauthorized, errors.New("agent token required: run runengram register --name <agent>"))
 		return nil, false
 	}
 	return agent, true

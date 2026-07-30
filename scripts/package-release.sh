@@ -37,24 +37,26 @@ staging_dir="$(mktemp -d "${TMPDIR:-/tmp}/runengram-package.XXXXXX")"
 trap 'rm -rf "${staging_dir}"' EXIT
 mkdir -p "${staging_dir}/bin" "${output_dir}"
 
-echo "[package] taskline-server ${target_os}/${target_arch}" >&2
+echo "[package] runengram-server ${target_os}/${target_arch}" >&2
 (
   cd "${repo_root}/server"
   CGO_ENABLED=0 GOOS="${target_os}" GOARCH="${target_arch}" \
-    go build -trimpath -o "${staging_dir}/bin/taskline-server" ./cmd/taskline-server
+    go build -trimpath -o "${staging_dir}/bin/runengram-server" ./cmd/runengram-server
 )
 
-echo "[package] taskline ${target_os}/${target_arch}" >&2
+echo "[package] runengram ${target_os}/${target_arch}" >&2
 (
   cd "${repo_root}/cli"
   CGO_ENABLED=0 GOOS="${target_os}" GOARCH="${target_arch}" \
     go build -trimpath \
       -ldflags "-s -w -X main.Version=${version} -X main.Commit=${commit}" \
-      -o "${staging_dir}/bin/taskline" .
+      -o "${staging_dir}/bin/runengram" .
 )
 
-cp "${repo_root}/plugins/runengram/scripts/runengram-service.sh" "${staging_dir}/bin/runengram"
-chmod +x "${staging_dir}/bin/taskline-server" "${staging_dir}/bin/taskline" "${staging_dir}/bin/runengram"
+cp "${repo_root}/plugins/runengram/scripts/runengram-service.sh" "${staging_dir}/bin/runengram-service"
+chmod +x "${staging_dir}/bin/runengram-server" "${staging_dir}/bin/runengram" "${staging_dir}/bin/runengram-service"
+ln -s runengram-server "${staging_dir}/bin/taskline-server"
+ln -s runengram "${staging_dir}/bin/taskline"
 cp "${repo_root}/LICENSE" "${staging_dir}/LICENSE"
 cp "${repo_root}/README.md" "${staging_dir}/README.md"
 cp "${repo_root}/README.zh-CN.md" "${staging_dir}/README.zh-CN.md"

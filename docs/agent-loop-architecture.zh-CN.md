@@ -63,8 +63,8 @@ flowchart TB
 
 先完成一个真实项目任务，不直接做无人值守队列：
 
-1. `taskline status` 做身份和服务预检；
-2. `taskline task next --claim` 原子领取任务；
+1. `runengram status` 做身份和服务预检；
+2. `runengram task next --claim` 原子领取任务；
 3. 适配器读取任务目标、验收标准、文档和依赖；
 4. 调用当前 Agent 或团队 SOP 执行任务；
 5. 每个阶段通过后，同步状态和 Markdown 交付物；
@@ -75,7 +75,7 @@ flowchart TB
 此路径稳定后，再增加 L2 Runner：
 
 ```text
-while taskline task next --claim:
+while runengram task next --claim:
     run L1
     sync result
     continue

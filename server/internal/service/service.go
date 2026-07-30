@@ -101,7 +101,7 @@ func (s *Service) RegisterAgent(ctx context.Context, name string) (*AgentRegistr
 func (s *Service) ResolveAgentToken(ctx context.Context, token string) (*model.Agent, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
-		return nil, errors.New("agent token required: run taskline register --name <agent>")
+		return nil, errors.New("agent token required: run runengram register --name <agent>")
 	}
 	return s.st.GetAgentByTokenHash(ctx, hashAgentToken(token))
 }
@@ -391,7 +391,7 @@ func (s *Service) HeartbeatTask(ctx context.Context, id string, opts ClaimOption
 func (s *Service) ReleaseTask(ctx context.Context, id string, opts ReleaseOptions) (*model.Task, error) {
 	owner := strings.TrimSpace(opts.Owner)
 	if owner == "" && !opts.Force {
-		return nil, errors.New("agent identity required: run taskline register --name <agent>")
+		return nil, errors.New("agent identity required: run runengram register --name <agent>")
 	}
 	before, err := s.st.GetTask(ctx, id)
 	if err != nil {
@@ -479,7 +479,7 @@ func (s *Service) UpdateTask(ctx context.Context, id string, u store.TaskUpdate)
 func normalizeClaimInput(owner string, lease time.Duration) (string, time.Duration, error) {
 	owner = strings.TrimSpace(owner)
 	if owner == "" {
-		return "", 0, errors.New("agent identity required: run taskline register --name <agent>")
+		return "", 0, errors.New("agent identity required: run runengram register --name <agent>")
 	}
 	if lease == 0 {
 		lease = DefaultLeaseDuration

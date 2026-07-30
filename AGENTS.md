@@ -17,9 +17,9 @@ see `PRODUCT.md`.
 - `web/` — React + Vite + Tailwind frontend. `pnpm build` writes into
   `server/web/dist/` so the server picks it up.
 - `skills/taskline-management/SKILL.md` — agent-facing skill that drives
-  the CLI. Source of truth for "how an agent should use taskline".
+  the CLI. Source of truth for "how an agent should use RunEngram".
 - `.agents/skills/taskline-localtest/SKILL.md` — repo-internal skill for
-  verifying changes against a rebuilt, running taskline binary.
+  verifying changes against a rebuilt, running runengram binary.
 - `scripts/build.sh` — one-shot release build (web → server → CLI).
 - `scripts/install-local.sh` — user-local CLI install plus public skill
   symlink refresh.
@@ -30,11 +30,11 @@ see `PRODUCT.md`.
 ## Build, run, test
 
 ```bash
-# Full release-style build (writes ./dist/{taskline-server,taskline})
+# Full release-style build (writes ./dist/{runengram-server,runengram})
 ./scripts/build.sh
 
 # Server only (without web bundle — fine for backend work)
-( cd server && go run ./cmd/taskline-server )
+( cd server && go run ./cmd/runengram-server )
 
 # Frontend with HMR (proxies /api → :8787)
 ( cd web && pnpm install && pnpm dev )
@@ -52,7 +52,8 @@ the background, logging to `.log/server.log` and writing the PID to
 override with `PORT` or `TASKLINE_LISTEN`) by killing only the LISTEN
 holder before relaunching.
 
-`scripts/install-local.sh` builds the CLI into `~/.local/bin/taskline`,
+`scripts/install-local.sh` builds the CLI into `~/.local/bin/runengram`
+(plus the `taskline` compatibility symlink),
 links public skills from `skills/` into `~/.agents/skills/` and
 `~/.claude/skills/`, and removes old global symlinks that used to point
 at this checkout. Project-internal skills stay under `.agents/skills/`
@@ -97,7 +98,7 @@ and are not installed globally.
 - **CLI output.** JSON when stdout is not a TTY (default for agents),
   table when it is. New commands MUST go through `internal/output` —
   don't `fmt.Println` JSON yourself.
-- **Agent preflight.** Run `taskline status` before registering or claiming.
+- **Agent preflight.** Run `runengram status` before registering or claiming.
   Register only when it reports `registered=false`; invalid identity or token
   errors must be fixed instead of silently replacing the local agent.
 - **Time.** Server-side timestamps are `time.Now().UnixMilli()` (int64).
@@ -143,7 +144,7 @@ and are not installed globally.
   constraint, the SKILL.md state list, and any state-keyed dictionary
   in the web components — keep the canonical set in lockstep.
 - Don't write to `server/web/dist/` by hand — `pnpm build` owns it.
-- Don't add a second auth layer. taskline is single-user and local; CORS
+- Don't add a second auth layer. runengram is single-user and local; CORS
   is intentionally permissive.
 
 ## Where to add things

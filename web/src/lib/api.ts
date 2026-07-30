@@ -1,4 +1,4 @@
-// Thin REST wrapper for taskline-server. Mirrors the canonical Project /
+// Thin REST wrapper for runengram-server. Mirrors the canonical Project /
 // Task shapes from server/api/model/model.go — keep them in sync.
 
 export type TaskState =

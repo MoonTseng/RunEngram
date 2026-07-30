@@ -104,7 +104,7 @@ func TestRunRegisterSendsExistingIdentity(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusConflict)
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"error": "already registered as agent-a; run taskline status",
+			"error": "already registered as agent-a; run runengram status",
 		})
 	}))
 	defer server.Close()

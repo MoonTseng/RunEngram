@@ -21,7 +21,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // During `pnpm dev`, forward API calls to the locally-running
-      // taskline-server so we can develop against real data without CORS
+      // runengram-server so we can develop against real data without CORS
       // gymnastics in the browser.
       "/api": "http://127.0.0.1:8787",
       "/healthz": "http://127.0.0.1:8787",

@@ -12,6 +12,6 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print CLI version + commit",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("taskline %s (%s)\n", version, commit)
+		fmt.Printf("runengram %s (%s)\n", version, commit)
 	},
 }

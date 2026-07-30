@@ -47,7 +47,7 @@ cycles before creating a run.
 Start a custom flow:
 
 ```bash
-taskline run start <task-id> --agent-tool codex \
+runengram run start <task-id> --agent-tool codex \
   --workflow content-review \
   --workflow-file examples/workflows/content-review.json
 ```
@@ -55,7 +55,7 @@ taskline run start <task-id> --agent-tool codex \
 The built-in `engineering-flow` requires no file:
 
 ```bash
-taskline run start <task-id> --agent-tool codex \
+runengram run start <task-id> --agent-tool codex \
   --workflow engineering-flow
 ```
 

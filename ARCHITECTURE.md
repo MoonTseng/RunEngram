@@ -1,15 +1,16 @@
 # Architecture
 
-How RunEngram's current task execution kernel is wired together. Existing
-binary, package, and environment names retain `taskline` for alpha
-compatibility. For the *why* see `PRODUCT.md`; for build, test, and
-contribution mechanics see `AGENTS.md`.
+How RunEngram's current task execution kernel is wired together. Public
+binaries use the RunEngram name. Go module paths, environment variables, and
+on-disk identity paths retain `taskline` for data and API compatibility. For
+the *why* see `PRODUCT.md`; for build, test, and contribution mechanics see
+`AGENTS.md`.
 
 ## Components
 
 ```
    ┌──────────────────┐         HTTP /api/v1/*         ┌──────────────────┐
-   │   taskline CLI   │  ────────────────────────────▶ │ taskline-server  │
+   │   runengram CLI   │  ────────────────────────────▶ │ runengram-server  │
    │  (cobra, JSON-   │ ◀────────────────────────────  │  (Hertz + SQLite)│
    │   first output)  │            JSON                │                  │
    └──────────────────┘                                │  ┌────────────┐  │
@@ -28,7 +29,7 @@ contribution mechanics see `AGENTS.md`.
                                                        └──────────────────┘
 ```
 
-One binary (`taskline-server`) serves both the REST API and the React
+One binary (`runengram-server`) serves both the REST API and the React
 SPA. SQLite is one file on disk; image attachments live alongside it as
 plain files keyed by task id; task docs are Markdown files stored in the
 configured docs directory with only file references kept in SQLite.
@@ -39,7 +40,7 @@ configured docs directory with only file references kept in SQLite.
 graph:
 
 ```
-  cmd/taskline-server/         ← process entrypoint, slog, config wiring
+  cmd/runengram-server/         ← process entrypoint, slog, config wiring
        │
        ▼
   api/handler/                 ← Hertz routes, JSON encode/decode, CORS,
@@ -481,7 +482,7 @@ auto-`MkdirAll` on first boot:
 GitHub state verification reads `TASKLINE_GITHUB_TOKEN`, `GITHUB_TOKEN`, then
 `GH_TOKEN`. When none is set it falls back to `gh auth token`, including common
 Homebrew paths for LaunchAgent deployments. Tokens stay in memory and are not
-written to taskline configuration or SQLite.
+written to runengram configuration or SQLite.
 
 The checked-in `.env.example` intentionally points local runtime state at
 ignored `./.cache/data/...`; the defaults above are what the server uses
@@ -493,7 +494,7 @@ CLI config:
 - `TASKLINE_PROJECT` — default `--project` value (so agents don't have
   to pass it on every subcommand)
 - `.config/taskline/agent.json` — checkout-local agent id and bearer token;
-  `taskline status` validates it before queue work
+  `runengram status` validates it before queue work
 
 ## Concurrency
 

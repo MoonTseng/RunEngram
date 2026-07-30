@@ -25,7 +25,7 @@ type registerOutput struct {
 
 var registerCmd = &cobra.Command{
 	Use:   "register",
-	Short: "Register this working directory as a taskline agent",
+	Short: "Register this working directory as a runengram agent",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name, _ := cmd.Flags().GetString("name")
 		return runRegister(os.Stdout, name, resolveServer(), output.Resolve(formatFlag))

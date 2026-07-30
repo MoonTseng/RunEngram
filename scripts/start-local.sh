@@ -8,7 +8,7 @@
 #   4. If the configured port is held by a LISTEN-ing process, kills *only*
 #      that process (TERM, then KILL after a short wait). Other processes
 #      with the same binary name are left alone.
-#   5. Launches ./dist/taskline-server detached from this shell, redirects
+#   5. Launches ./dist/runengram-server detached from this shell, redirects
 #      stdout+stderr to .log/server.log, writes the PID to .log/server.pid.
 #
 # Knobs:
@@ -21,7 +21,7 @@
 #                      for the server, and PORT is parsed from it for the
 #                      kill check. The default binds only localhost.
 #   SKIP_BUILD       — if set to a non-empty value, skip ./scripts/build.sh
-#                      and require ./dist/taskline-server to already exist.
+#                      and require ./dist/runengram-server to already exist.
 #                      Useful for fast iteration when only restarting after
 #                      a Go-only edit and you ran `go build` yourself.
 set -euo pipefail
@@ -29,7 +29,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Seed and load local configuration before resolving port or launching the
-# process. start-local is the owner of this file; taskline-server does not parse
+# process. start-local is the owner of this file; runengram-server does not parse
 # dotenv files itself.
 if [[ ! -f .env && -f .env.example ]]; then
     echo "[start-local] no .env, copying .env.example" >&2
@@ -60,11 +60,11 @@ if ! command -v lsof >/dev/null 2>&1; then
 fi
 
 if [[ -n "${SKIP_BUILD:-}" ]]; then
-    if [[ ! -x ./dist/taskline-server ]]; then
-        echo "[start-local] SKIP_BUILD set but ./dist/taskline-server is missing" >&2
+    if [[ ! -x ./dist/runengram-server ]]; then
+        echo "[start-local] SKIP_BUILD set but ./dist/runengram-server is missing" >&2
         exit 2
     fi
-    echo "[start-local] SKIP_BUILD=1 — using existing ./dist/taskline-server" >&2
+    echo "[start-local] SKIP_BUILD=1 — using existing ./dist/runengram-server" >&2
 else
     echo "[start-local] building…" >&2
     ./scripts/build.sh
@@ -128,7 +128,7 @@ import sys
 
 log = open(sys.argv[1], "ab", buffering=0)
 proc = subprocess.Popen(
-    ["./dist/taskline-server"],
+    ["./dist/runengram-server"],
     stdin=subprocess.DEVNULL,
     stdout=log,
     stderr=subprocess.STDOUT,

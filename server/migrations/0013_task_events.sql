@@ -2,7 +2,7 @@
 --
 -- Keep this migration text identical in server/migrations/ and
 -- server/internal/store/schema/: the former is external migration history,
--- the latter is embedded into the single taskline-server binary.
+-- the latter is embedded into the single runengram-server binary.
 
 CREATE TABLE task_events (
     id         TEXT PRIMARY KEY,

@@ -97,7 +97,7 @@ Codex、Claude Code、Pi 或其他 Agent 仍在每个节点内自主读代码、
 其他流程通过 JSON Workflow Adapter 接入：
 
 ```bash
-taskline run start <任务 ID> --agent-tool claude-code \
+runengram run start <任务 ID> --agent-tool claude-code \
   --workflow content-review \
   --workflow-file examples/workflows/content-review.json
 ```
@@ -166,8 +166,8 @@ Work Graph 不是每项任务都强制开启。跨会话、存在独立分支、
 - 候选经过人工确认和证据验证后才进入项目记忆；
 - 统计执行次数、完成率、阻塞恢复率、候选、晋升、召回任务数和实际复用结果。
 
-为了兼容现有脚本，二进制目前仍叫 `taskline-server` 和 `taskline`，1.0 前
-会统一命名。
+正式二进制名称已经统一为 `runengram-server` 和 `runengram`。发布包仍提供
+`taskline-server`、`taskline` 兼容软链接，现有自动化可以逐步迁移。
 
 ## 项目经验怎么保存
 
@@ -233,7 +233,7 @@ RunEngram 返回冲突并要求刷新，不会静默丢失任一方的纠正。
 Agent 通过 CLI 使用同一套并发保护：
 
 ```bash
-taskline capsule edit <经验 ID> \
+runengram capsule edit <经验 ID> \
   --expected-updated-at <updated_at 毫秒值> \
   --summary "<修正后的经验>"
 ```
@@ -296,7 +296,7 @@ cd RunEngram
 
 ```bash
 cp .env.example .env
-./dist/taskline-server
+./dist/runengram-server
 ```
 
 打开：
@@ -310,26 +310,26 @@ http://127.0.0.1:8787/
 ```bash
 export TASKLINE_PROJECT=demo
 
-./dist/taskline status
-./dist/taskline register --name agent-a
-./dist/taskline project create \
+./dist/runengram status
+./dist/runengram register --name agent-a
+./dist/runengram project create \
   --name demo \
   --description "RunEngram demo"
-./dist/taskline task create \
+./dist/runengram task create \
   --title "Create first verified task" \
   --type feature \
   --priority 1
-./dist/taskline task next --claim
+./dist/runengram task next --claim
 TASK_ID="<领取到的任务 ID>"
-./dist/taskline task context "$TASK_ID"
-./dist/taskline run start "$TASK_ID" --agent-tool codex \
+./dist/runengram task context "$TASK_ID"
+./dist/runengram run start "$TASK_ID" --agent-tool codex \
   --workflow engineering-flow
 RUN_ID="<上一条输出中的 run id>"
-./dist/taskline run node "$RUN_ID" requirement-analysis \
+./dist/runengram run node "$RUN_ID" requirement-analysis \
   --status completed \
   --summary "需求范围和验收标准已确认" \
   --evidence "需求契约已复核"
-./dist/taskline run graph "$RUN_ID"
+./dist/runengram run graph "$RUN_ID"
 ```
 
 `task next` 默认只预览。Agent 真正开始执行前必须使用 `--claim`。
@@ -349,14 +349,14 @@ cd /path/to/your-project
 export TASKLINE_SERVER=http://127.0.0.1:8787
 export TASKLINE_PROJECT=your-project
 
-taskline status
+runengram status
 ```
 
 当 `registered=false` 时注册当前工作目录的 Agent 身份：
 
 ```bash
-taskline register --name your-agent-name
-taskline status
+runengram register --name your-agent-name
+runengram status
 ```
 
 然后可以让 Codex（默认）、Claude Code 或其他可调用 CLI 的 Agent 按照
@@ -385,33 +385,33 @@ taskline-management 待规划 【需求描述】
 `项目:CamScanner`。英文别名分别为 `run`、`spec` 和 `pending`。
 
 ```bash
-taskline task context <任务 ID>
-taskline learning capture --project your-project --task <任务 ID> \
+runengram task context <任务 ID>
+runengram learning capture --project your-project --task <任务 ID> \
   --kind human-correction \
   --trigger "无法直接读取 Notion 需求" \
   --guidance "先调用项目的需求导入步骤，再进入 PRD 分析" \
   --scope "Notion 链接需求" --producer codex
-taskline learning list --project your-project --status pending
-taskline learning edit <学习候选 ID> \
+runengram learning list --project your-project --status pending
+runengram learning edit <学习候选 ID> \
   --trigger "为 7.23.0 创建功能分支" \
   --guidance "使用 7.23.0_feat/<英文需求名>" \
   --scope "功能分支"
-taskline learning promote <学习候选 ID> \
+runengram learning promote <学习候选 ID> \
   --memory-class project-rule \
   --evidence-file ./verified-learning.md
-taskline learning reject <学习候选 ID> \
+runengram learning reject <学习候选 ID> \
   --reason "仅为单次环境问题，不可复用"
-taskline capsule list --project your-project --query webview
-taskline task recall <任务 ID> --query "Gradle daemon 在多个模块编译时失败"
-taskline capsule create --project your-project --source-task <任务 ID> \
+runengram capsule list --project your-project --query webview
+runengram task recall <任务 ID> --query "Gradle daemon 在多个模块编译时失败"
+runengram capsule create --project your-project --source-task <任务 ID> \
   --memory-class experience --trigger "删除兼容服务" \
   --title "可复用边界" --summary "已经验证的结论" \
   --scope "适用模块" --evidence-file ./evidence.md \
   --fingerprint module-name --producer codex
-taskline capsule use <胶囊 ID> --task <任务 ID> --outcome helpful
-taskline capsule metrics --project your-project
-taskline task resume <任务 ID>
-taskline project delete temporary-smoke-project
+runengram capsule use <胶囊 ID> --task <任务 ID> --outcome helpful
+runengram capsule metrics --project your-project
+runengram task resume <任务 ID>
+runengram project delete temporary-smoke-project
 ```
 
 更完整的操作说明见[中文使用指南](./使用说明.md)。

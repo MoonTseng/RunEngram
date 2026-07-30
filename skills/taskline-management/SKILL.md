@@ -14,9 +14,9 @@ description: |
   project's runnable queue. Skip one-off notes with no state or follow-up.
 ---
 
-# taskline — task management for AI agents
+# RunEngram — engineering memory and work management for AI agents
 
-The `taskline` CLI is your only interface to taskline. It tracks
+The `runengram` CLI is your only interface to RunEngram. It tracks
 projects and the tasks (features / bugs / docs) inside them, enforces a
 seven-state lifecycle (`pending → start → spec → dev → test → review → done`),
 models inter-task dependencies as a DAG, and answers "what's runnable
@@ -30,8 +30,8 @@ vendor.
 **Always go through the CLI.** Don't `curl` anywhere, don't try to read
 or write the database, don't shell out to internal endpoints — even if
 the CLI doesn't expose the exact verb you want. If you find a real
-gap, file a taskline task to extend the CLI; don't work around it.
-Where taskline runs and how it stores data is not your concern.
+gap, file a runengram task to extend the CLI; don't work around it.
+Where runengram runs and how it stores data is not your concern.
 
 The CLI is built for agents, not humans at a terminal:
 
@@ -44,7 +44,7 @@ The CLI is built for agents, not humans at a terminal:
 
 ## When to use
 
-Reach for taskline whenever the user's ask has *structure* — state,
+Reach for runengram whenever the user's ask has *structure* — state,
 ordering, dependencies, more than one item, "what's next?". Examples:
 
 - "Track this as a feature in `<project>`"
@@ -64,21 +64,21 @@ repository when existing projects are ambiguous. Once a project is known,
 export `TASKLINE_PROJECT` for the session or pass `--project` on every
 project-scoped command. Before doing queue work, make sure
 the current working directory has a valid agent identity by running
-`taskline status --format json`. Register only when it reports
+`runengram status --format json`. Register only when it reports
 `"registered": false`; use the automatic Agent bootstrap below instead of
 asking for a name, then run status again. If status fails because
 the local identity or token is invalid, stop and fix that identity
 instead of registering another name over it. Then keep pulling
-`taskline task next --claim --format json` after each completed task
+`runengram task next --claim --format json` after each completed task
 until it returns the literal `null`. A task is not yours until that
 claim command succeeds and the returned `owner` equals the agent name
 registered in this directory. Do not stop after one task or one PR
 unless the runnable queue is exhausted or a real blocker prevents
 progress.
 
-Skip taskline when the user just wants a one-line note, a scratch
+Skip runengram when the user just wants a one-line note, a scratch
 todo, or an answer that doesn't survive past this turn — reply
-directly. taskline is the wrong tool for content that has no
+directly. runengram is the wrong tool for content that has no
 follow-up.
 
 ## Prompt shorthand
@@ -100,7 +100,7 @@ creating the task.
 Never ask a developer to configure a project when the current code repository
 already provides a stable name.
 
-1. Run `taskline project list --format json`.
+1. Run `runengram project list --format json`.
 2. Choose a candidate in this order:
    - explicit `project:<name>` or `项目:<名称>` in the prompt;
    - `$TASKLINE_PROJECT`;
@@ -109,7 +109,7 @@ already provides a stable name.
    - basename of `git rev-parse --show-toplevel`.
 3. Reuse an exact case-insensitive project match.
 4. When a candidate exists but no project matches, create it immediately:
-   `taskline project create --name "<candidate>" --description "Auto-created from current repository"`.
+   `runengram project create --name "<candidate>" --description "Auto-created from current repository"`.
    Do not ask for confirmation.
 5. With no repository candidate, use the only existing project.
 6. Ask only for a project name when no candidate exists and the server has
@@ -125,7 +125,7 @@ documentation-only request; otherwise use `feature`. Use priority `0` unless the
 prompt supplies a priority.
 
 Create-only and pending modes do not need an agent identity. Before `run`,
-`spec`, or bare queue-drain mode, run `taskline status --format json` and follow
+`spec`, or bare queue-drain mode, run `runengram status --format json` and follow
 the automatic Agent bootstrap below.
 
 ### Automatic Agent bootstrap
@@ -137,8 +137,8 @@ workspace-scoped Codex identity without asking:
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
 user_name="$(id -un 2>/dev/null || whoami)"
 workspace_hash="$(printf '%s' "$repo_root" | git hash-object --stdin | cut -c1-8)"
-taskline register --name "codex-${user_name}-${workspace_hash}"
-taskline status --format json
+runengram register --name "codex-${user_name}-${workspace_hash}"
+runengram status --format json
 ```
 
 The path hash prevents one checkout from rotating another checkout's token on
@@ -147,16 +147,16 @@ a shared server. Auto-register only after status explicitly reports
 repair it; never replace it. Ask for a name only when automatic registration
 itself fails.
 
-For `run` and `spec`, claim the ID returned by `taskline task create` with
-`taskline task claim <id>`; do not use `task next --claim`, because another
+For `run` and `spec`, claim the ID returned by `runengram task create` with
+`runengram task claim <id>`; do not use `task next --claim`, because another
 higher-priority task may be selected. Immediately read
-`taskline task context <id>`, then call
-`taskline run start <id> --agent-tool codex --format json` and retain
+`runengram task context <id>`, then call
+`runengram run start <id> --agent-tool codex --format json` and retain
 `run.id`. If another supported Agent executes the task, use
 `--agent-tool claude-code`, `pi`, or `other`. A blocked active run resumes with
 the same ID and returns `"resumed": true`; read
-`taskline task resume <id> --format json`, then refresh active memory with
-`taskline task recall <id> --query "<current phase and concrete observation>" --format json`
+`runengram task resume <id> --format json`, then refresh active memory with
+`runengram task recall <id> --query "<current phase and concrete observation>" --format json`
 before continuing. Treat `context_revision` as the identity of the current
 Context Pack. Inspect every explanation's reason codes and warnings; never
 apply a `conflicts-with` memory silently. `run` stops after that created task completes or
@@ -194,9 +194,9 @@ The graph wraps the selected SOP:
 Start the generic engineering graph after claim and context recall:
 
 ```bash
-taskline run start <task-id> --agent-tool codex \
+runengram run start <task-id> --agent-tool codex \
   --workflow engineering-flow --format json
-taskline run graph <run-id> --format json
+runengram run graph <run-id> --format json
 ```
 
 When a project already has a flow, invoke it for actual work and map its
@@ -217,7 +217,7 @@ RunEngram:
 For a different stage model, provide a JSON Workflow Adapter:
 
 ```bash
-taskline run start <task-id> --agent-tool claude-code \
+runengram run start <task-id> --agent-tool claude-code \
   --workflow content-review \
   --workflow-file .runengram/workflows/content-review.json \
   --format json
@@ -234,8 +234,8 @@ a compact result, related task-doc IDs, input fingerprint, and verification
 evidence:
 
 ```bash
-taskline run node <run-id> requirement-analysis --status running
-taskline run node <run-id> requirement-analysis --status completed \
+runengram run node <run-id> requirement-analysis --status running
+runengram run node <run-id> requirement-analysis --status completed \
   --summary "Scope and acceptance criteria confirmed" \
   --artifact-id <spec-doc-id> \
   --evidence "PRD normalized and acceptance criteria reviewed" \
@@ -251,10 +251,10 @@ Use an interrupt only when execution genuinely needs human authority or missing
 product intent. The web UI can answer it and the same run resumes:
 
 ```bash
-taskline run interrupt <run-id> technical-design \
+runengram run interrupt <run-id> technical-design \
   --kind approval --prompt "Confirm migration boundary?" \
   --option "Confirm"
-taskline run respond <interrupt-id> --response "Confirm"
+runengram run respond <interrupt-id> --response "Confirm"
 ```
 
 For `final-gate`, an Agent must create an approval interrupt and wait for a
@@ -262,9 +262,9 @@ human response. It cannot complete that node itself. Rejected decisions reopen
 the affected upstream node; changing an upstream result invalidates all
 downstream receipts automatically.
 
-After every meaningful boundary, run `taskline run graph <run-id>` and continue
+After every meaningful boundary, run `runengram run graph <run-id>` and continue
 from the first `ready`, `running`, `waiting`, or `failed` node. On session
-restart, `taskline task resume <task-id>` contains the full Work Graph, pending
+restart, `runengram task resume <task-id>` contains the full Work Graph, pending
 interrupt, stage receipts, and recalled context. Never reconstruct progress
 from chat.
 
@@ -272,9 +272,9 @@ from chat.
 
 ```bash
 export TASKLINE_PROJECT="demo"   # default project so you can omit --project
-taskline status --format json
-taskline register --name "agent-a"  # only when registered=false
-taskline status --format json
+runengram status --format json
+runengram register --name "agent-a"  # only when registered=false
+runengram status --format json
 ```
 
 `--project` overrides `$TASKLINE_PROJECT`. A project is referenced by
@@ -282,12 +282,12 @@ taskline status --format json
 Export `TASKLINE_PROJECT` once at the start of a session that's
 focused on a single project.
 
-`taskline register --name <agent>` writes `.config/taskline/agent.json`
+`runengram register --name <agent>` writes `.config/taskline/agent.json`
 in the current working directory. That file contains the bearer token
 used by claim, heartbeat, release, and normal update flows; it is
 intentionally not global because multiple agents may share one machine.
 If a claiming command fails with `agent identity required`, register
-the current directory first, then verify it with `taskline status`.
+the current directory first, then verify it with `runengram status`.
 Do not pass or invent owner strings; the
 server derives owner from the registered token.
 
@@ -314,7 +314,7 @@ server derives owner from the registered token.
 Every mutation also appends a task history event with `actor`, `action`,
 `summary`, structured `details`, and `created_at`. A registered agent token is
 recorded as that agent name; otherwise the actor is `web`, `cli`, or `api`.
-Use `taskline task history <id>` whenever you need durable operation context or
+Use `runengram task history <id>` whenever you need durable operation context or
 the exact before/after values for title, description, state, type, priority, or
 labels.
 
@@ -342,8 +342,8 @@ queue-preview commands hide live claims owned by other agents by
 default. A registered agent sees its own live claims first, plus
 unclaimed or lease-expired tasks. Tasks are returned with same-owner
 claims first, then by `priority DESC`, then `created_at ASC`.
-Use `taskline task next --claim` to reserve the single highest-priority
-claimable task before doing any work. Plain `taskline task next` is
+Use `runengram task next --claim` to reserve the single highest-priority
+claimable task before doing any work. Plain `runengram task next` is
 only a preview and must not be treated as permission to start. Add
 repeated `--label` filters to `task next` or `task list --runnable` to
 pull from a labeled subset; labels use AND semantics, so
@@ -361,9 +361,9 @@ no-op.
 ### Agent preflight
 
 ```bash
-taskline status --format json
-taskline register --name agent-a  # only when status says registered=false
-taskline status --format json
+runengram status --format json
+runengram register --name agent-a  # only when status says registered=false
+runengram status --format json
 ```
 
 Status reports CLI version, server health, checkout-local config directory,
@@ -376,79 +376,79 @@ another checkout identity.
 ### Projects
 
 ```bash
-taskline project create --name demo --description "first project"
-taskline project list
+runengram project create --name demo --description "first project"
+runengram project list
 ```
 
 ### Tasks
 
 ```bash
 # Create (defaults to 'start' state — immediately runnable)
-taskline task create --project demo --title "first task" --type feature --priority 1
-taskline task create --project demo --title "labeled task" --label backend --label ui
+runengram task create --project demo --title "first task" --type feature --priority 1
+runengram task create --project demo --title "labeled task" --label backend --label ui
 
 # Create and park in 'pending' (won't show up in `task next`)
-taskline task create --project demo --title "later idea" --auto-start=false
+runengram task create --project demo --title "later idea" --auto-start=false
 
 # List (filter by state with comma-separated names)
-taskline task list --project demo
-taskline task list --project demo --state start,dev,test
-taskline task list --project demo --mine
-taskline task list --project demo --unclaimed
-taskline task list --project demo --runnable --label backend
-taskline task list --project demo --runnable --mine
+runengram task list --project demo
+runengram task list --project demo --state start,dev,test
+runengram task list --project demo --mine
+runengram task list --project demo --unclaimed
+runengram task list --project demo --runnable --label backend
+runengram task list --project demo --runnable --mine
 
 # Pick / inspect
-taskline task next --project demo            # preview only; does not reserve work
-taskline task next --project demo --claim --lease 6h
-taskline task next --project demo --claim --label backend
-taskline task search --project demo fc7a0732 # short id / full id / text matches
-taskline task search --project demo "historical context" --limit 10
-taskline task get <id>
-taskline task history <id>                  # actor, operation, time, before/after
-taskline task context <id>                  # immutable task-start context + recalled memory
-taskline task recall <id> --query "<new context>" # dynamic memory lookup during work
-taskline task resume <id>                   # snapshot + latest checkpoint + recent events
+runengram task next --project demo            # preview only; does not reserve work
+runengram task next --project demo --claim --lease 6h
+runengram task next --project demo --claim --label backend
+runengram task search --project demo fc7a0732 # short id / full id / text matches
+runengram task search --project demo "historical context" --limit 10
+runengram task get <id>
+runengram task history <id>                  # actor, operation, time, before/after
+runengram task context <id>                  # immutable task-start context + recalled memory
+runengram task recall <id> --query "<new context>" # dynamic memory lookup during work
+runengram task resume <id>                   # snapshot + latest checkpoint + recent events
 
 # Mutate (PATCH semantics — only pass the flags you want changed)
-taskline task update <id> --state test
-taskline task update <id> --priority 5 --description "new prose"
-taskline task update <id> --label review --label frontend   # replace labels
-taskline task update <id> --add-label review --remove-label triage
-taskline task update <id> --append-description "new note"
-taskline task update <id> --clear-labels                    # remove labels
-taskline task update <id> --state done --if-state review
-taskline task update <id> --state pending --force            # manual correction
-taskline task delete <id>                    # cascades deps + attachments
+runengram task update <id> --state test
+runengram task update <id> --priority 5 --description "new prose"
+runengram task update <id> --label review --label frontend   # replace labels
+runengram task update <id> --add-label review --remove-label triage
+runengram task update <id> --append-description "new note"
+runengram task update <id> --clear-labels                    # remove labels
+runengram task update <id> --state done --if-state review
+runengram task update <id> --state pending --force            # manual correction
+runengram task delete <id>                    # cascades deps + attachments
 
 # Multi-agent ownership
-taskline task claim <id> --lease 2h
-taskline task heartbeat <id> --lease 6h
-taskline task release <id>
-taskline task release <id> --force           # manual recovery
+runengram task claim <id> --lease 2h
+runengram task heartbeat <id> --lease 6h
+runengram task release <id>
+runengram task release <id> --force           # manual recovery
 
 # Dependencies
-taskline task depend <id> --on <other-id>
-taskline task undepend <id> --on <other-id>
+runengram task depend <id> --on <other-id>
+runengram task undepend <id> --on <other-id>
 
 # Image attachment (any binary)
-taskline task upload <id> --file ./screenshot.png
+runengram task upload <id> --file ./screenshot.png
 
 # Markdown docs (stage deliverables, notes, reports)
-taskline task doc create <task-id> --title "Spec" --file ./spec.md
-taskline task doc get <doc-id>
-taskline task doc update <doc-id> --title "Test Report" --file ./test-report.md
-taskline task doc delete <doc-id>
+runengram task doc create <task-id> --title "Spec" --file ./spec.md
+runengram task doc get <doc-id>
+runengram task doc update <doc-id> --title "Test Report" --file ./test-report.md
+runengram task doc delete <doc-id>
 
 # Link (PR, external design doc, ticket, merged commit — any URL to remember)
-taskline task link <task-id> --url https://example.com/pr/42 --label "PR #42"
+runengram task link <task-id> --url https://example.com/pr/42 --label "PR #42"
 
 # Remove a link by its id (links are returned inline on `task get`)
-taskline task unlink <link-id>
+runengram task unlink <link-id>
 
 # Verified engineering memory
-taskline capsule list --project demo --query webview
-taskline capsule create --project demo --source-task <id> \
+runengram capsule list --project demo --query webview
+runengram capsule create --project demo --source-task <id> \
   --memory-class experience \
   --trigger "Deleting a compatibility service" \
   --title "Reusable migration boundary" \
@@ -456,50 +456,50 @@ taskline capsule create --project demo --source-task <id> \
   --scope "WebView URL service migrations" \
   --evidence-file ./verified-evidence.md \
   --label webview --fingerprint url-service --producer codex
-taskline capsule use <capsule-id> --task <id> --outcome helpful \
+runengram capsule use <capsule-id> --task <id> --outcome helpful \
   --notes "avoided repeated caller search"
-taskline capsule archive <capsule-id>
-taskline capsule metrics --project demo
+runengram capsule archive <capsule-id>
+runengram capsule metrics --project demo
 
 # Typed memory graph: provenance, applicability, conflicts, and replacement
-taskline capsule relate <capsule-id> \
+runengram capsule relate <capsule-id> \
   --type validated-by --target-kind artifact --target <test-report-doc-id> \
   --note "Focused and full verification passed"
-taskline capsule relate <capsule-id> \
+runengram capsule relate <capsule-id> \
   --type applies-to --target-kind scope --target "webview-url-service"
-taskline capsule relate <new-capsule-id> \
+runengram capsule relate <new-capsule-id> \
   --type supersedes --target-kind capsule --target <old-capsule-id> \
   --note "New evidence invalidated the old command"
-taskline capsule edit <capsule-id> --expected-updated-at <updated-at-ms> \
+runengram capsule edit <capsule-id> --expected-updated-at <updated-at-ms> \
   --summary "<corrected guidance>" --scope "<corrected applicability>"
-taskline capsule unrelate <relation-id>
+runengram capsule unrelate <relation-id>
 
 # Correct a pending learning candidate before it enters future context
-taskline learning edit <note-id> \
+runengram learning edit <note-id> \
   --trigger "Creating a feature branch for release 7.23.0" \
   --guidance "Name branch 7.23.0_feat/<english-requirement-name>" \
   --scope "CamScanner feature branches"
 
 # Resumable Agent run
-taskline run start <task-id> --agent-tool codex
-taskline run start <task-id> --agent-tool codex --workflow engineering-flow
-taskline run start <task-id> --agent-tool claude-code \
+runengram run start <task-id> --agent-tool codex
+runengram run start <task-id> --agent-tool codex --workflow engineering-flow
+runengram run start <task-id> --agent-tool claude-code \
   --workflow content-review \
   --workflow-file .runengram/workflows/content-review.json
-taskline run graph <run-id>
-taskline run node <run-id> requirement-analysis --status completed \
+runengram run graph <run-id>
+runengram run node <run-id> requirement-analysis --status completed \
   --summary "Requirement contract confirmed" --artifact-id <doc-id> \
   --evidence "Acceptance criteria reviewed"
-taskline run interrupt <run-id> final-gate --kind approval \
+runengram run interrupt <run-id> final-gate --kind approval \
   --prompt "Accept verified result?" --option "Accept" --option "Revise"
-taskline run respond <interrupt-id> --response "Accept"
-taskline run checkpoint <run-id> --status running \
+runengram run respond <interrupt-id> --response "Accept"
+runengram run checkpoint <run-id> --status running \
   --summary "Completed caller inventory" --next-step "Migrate bridge caller"
-taskline run checkpoint <run-id> --status blocked \
+runengram run checkpoint <run-id> --status blocked \
   --summary "Bridge ownership unresolved" --next-step "Trace registration"
-taskline run event <run-id> --kind verification.passed \
+runengram run event <run-id> --kind verification.passed \
   --summary "Focused tests passed" --details '{"command":"go test ./..."}'
-taskline run finish <run-id> --status completed \
+runengram run finish <run-id> --status completed \
   --summary "Implementation and verification complete"
 ```
 
@@ -508,7 +508,7 @@ Delete returns `{"deleted": true, "id": ...}`; depend returns
 
 ### Multi-agent claim flow
 
-Run `taskline status --format json` first and confirm the registered agent
+Run `runengram status --format json` first and confirm the registered agent
 identity. Register only when status explicitly reports `registered=false`.
 Use `task next --claim` when more than one agent may pull from the same
 project. Plain `task next` is a read-only preview and does **not**
@@ -550,7 +550,7 @@ or chat threads. Do not keep stage deliverables only in chat history.
 
 Task docs are first-class Markdown files. They surface inline on
 `task get` with `url` fields under `/api/v1/docs/<doc-id>/content`;
-fetch full editable content with `taskline task doc get <doc-id>`.
+fetch full editable content with `runengram task doc get <doc-id>`.
 Create or update the stage doc before advancing out of the matching
 stage:
 
@@ -609,7 +609,7 @@ after-the-fact correction.
 For a tracked run, append a normalized event immediately:
 
 ```bash
-taskline run event <run-id> --kind learning.discovered \
+runengram run event <run-id> --kind learning.discovered \
   --summary "Recovered Notion requirement ingestion" \
   --trigger "Direct Notion requirement read failed" \
   --guidance "Use project/requirement-import before requirement analysis" \
@@ -617,7 +617,7 @@ taskline run event <run-id> --kind learning.discovered \
 ```
 
 RunEngram creates a pending Learning Note from this event and links its ID to
-the run history. Use `taskline learning capture <task-id>` only for manual
+the run history. Use `runengram learning capture <task-id>` only for manual
 capture outside a tracked run. Preserve only minimal
 trigger, reusable guidance, scope, labels, fingerprints, and producer. Never
 capture secrets, credentials, raw transcripts, guesses, task-only preferences,
@@ -628,7 +628,7 @@ Example: the user requires all release `7.23.0` feature branches to use
 appears:
 
 ```bash
-taskline run event <run-id> --kind learning.discovered \
+runengram run event <run-id> --kind learning.discovered \
   --summary "Captured feature branch convention" \
   --trigger "Creating a feature branch for release 7.23.0" \
   --guidance "Name branch 7.23.0_feat/<english-requirement-name>" \
@@ -640,7 +640,7 @@ Example: a user supplies a Notion requirement link. Direct reading fails, then
 the user explains that `project/requirement-import` must normalize it first:
 
 ```bash
-taskline learning capture <task-id> --project <project> \
+runengram learning capture <task-id> --project <project> \
   --kind human-correction \
   --trigger "Direct Notion requirement read failed" \
   --guidance "Use project/requirement-import before requirement analysis" \
@@ -652,21 +652,21 @@ taskline learning capture <task-id> --project <project> \
 During test or wrap-up, list pending notes for the task:
 
 ```bash
-taskline learning list --task <task-id> --status pending
+runengram learning list --task <task-id> --status pending
 ```
 
 If wording, scope, or trigger is inaccurate, correct the pending candidate
 before promotion:
 
 ```bash
-taskline learning edit <note-id> \
+runengram learning edit <note-id> \
   --trigger "<correct trigger>" \
   --guidance "<correct reusable guidance>" \
   --scope "<correct applicability>"
 ```
 
 `learning edit` changes pending notes only. Project Knowledge or
-`taskline capsule edit` may correct promoted Capsules with optimistic
+`runengram capsule edit` may correct promoted Capsules with optimistic
 concurrency: a stale browser or Agent receives a conflict instead of silently
 overwriting newer content. Material semantic corrections should preserve
 history: create a corrected Capsule, connect it to the old Capsule with
@@ -676,7 +676,7 @@ Promote only after commands, tests, artifacts, or merged changes verify the
 guidance:
 
 ```bash
-taskline learning promote <note-id> \
+runengram learning promote <note-id> \
   --memory-class experience \
   --evidence-file <file>
 ```
@@ -691,7 +691,7 @@ guidance; RunEngram retrieves it by relevance.
 Reject disproved or non-reusable guidance:
 
 ```bash
-taskline learning reject <note-id> --reason "<evidence-backed reason>"
+runengram learning reject <note-id> --reason "<evidence-backed reason>"
 ```
 
 Leave unverified notes pending. Pending notes remain visible but are never
@@ -732,7 +732,7 @@ When the user says "work the queue" / "do the next task" / "keep
 going through the backlog", or explicitly invokes this skill without
 more instructions:
 
-1. Run `taskline task next --project <p> --claim --format json`.
+1. Run `runengram task next --project <p> --claim --format json`.
 2. The CLI emits the bare task object (`id`, `title`, `state`, … as
    top-level fields) on successful claim, or the literal `null` when
    nothing is currently claimable. If you see `null`, report there's
@@ -744,9 +744,9 @@ more instructions:
    each image includes a `url` under `/api/v1/images/<image-id>`. Fetch
    and surface them when they are material to the task. When a task
    references a short id, previous work, or historical context, use
-   `taskline task search --project <p> "<query>" --format json` to find
+   `runengram task search --project <p> "<query>" --format json` to find
    the related task before relying on memory or chat history.
-   Immediately run `taskline task context <id> --format json`. This creates
+   Immediately run `runengram task context <id> --format json`. This creates
    one immutable task-start snapshot. Apply every active `project_rules` entry
    unless current code disproves it. Read each relevant
    `suggested_capsules` entry's `scope`, `evidence`, `validation`, and
@@ -756,7 +756,7 @@ more instructions:
    Recall uses a rune budget and relevance rank,
    not a fixed five-item limit. When execution later reveals a new module,
    error, command, or tool that the initial task text did not contain, run
-   `taskline task recall <id> --query "<new concrete context>" --format json`
+   `runengram task recall <id> --query "<new concrete context>" --format json`
    before improvising. Run dynamic recall again after session restoration,
    context compaction, or a stage boundary that introduces different code,
    tools, or failure signatures. Compare `context_revision` to detect a changed
@@ -767,7 +767,7 @@ more instructions:
    only when those rules select a graph; otherwise omit `--workflow`. Retain
    the returned `run.id`. When
    `"resumed": true`, immediately read
-   `taskline task resume <id> --format json`; use its `latest_run.summary`,
+   `runengram task resume <id> --format json`; use its `latest_run.summary`,
    `latest_run.next_step`, and `recent_events` instead of asking the user to
    repeat prior work.
 4. Walk the task through the stages below in order. Each stage has the
@@ -801,7 +801,7 @@ follow its declared node keys and capability mapping:
 
 Mark a node `running` before work and `completed` only after its output exists.
 Use actual task document/image/link IDs for `--artifact-id`; arbitrary labels
-are rejected. After each receipt, read `taskline run graph <run-id>` and follow
+are rejected. After each receipt, read `runengram run graph <run-id>` and follow
 its `next_node`. Never mark a human node `skipped`.
 
 ### start → spec
@@ -812,9 +812,9 @@ its `next_node`. Never mark a human node `skipped`.
   2. `git checkout -b feature/<short-kebab-slug>` (slug from the title;
      keep it under ~30 chars).
   3. Confirm `git status` is clean.
-- **Advance:** `taskline task update <id> --state spec`
+- **Advance:** `runengram task update <id> --state spec`
 - **Checkpoint:** save branch/setup result and next analysis action with
-  `taskline run checkpoint <run-id>`.
+  `runengram run checkpoint <run-id>`.
 - **Skip when:** the change qualifies as fast-path (see below) — go
   straight to dev.
 
@@ -832,9 +832,9 @@ its `next_node`. Never mark a human node `skipped`.
      definitions and implementation plan), and test plan/test cases.
      If you already wrote a Superpowers plan, upload that content as the
      doc rather than duplicating it in the task description.
-- **Advance:** `taskline task update <id> --state dev`
+- **Advance:** `runengram task update <id> --state dev`
 - **Checkpoint:** save chosen contract, attached Spec, and first implementation
-  action with `taskline run checkpoint <run-id>`.
+  action with `runengram run checkpoint <run-id>`.
 - **Graph receipt:** complete `requirement-analysis` with the Spec document ID
   and acceptance evidence.
 - **Skip when:** the change is mechanical (rename, formatting,
@@ -860,7 +860,7 @@ existing module boundaries.
 Ask the user only when the product intent is genuinely unknowable from
 the task, the decision has external/business consequences, credentials
 or destructive permissions are missing, or the safe implementation
-cannot proceed without information that is not in the repo or taskline
+cannot proceed without information that is not in the repo or RunEngram
 task. In all other cases, record the chosen approach and reason in the
 task description or implementation notes, then continue.
 
@@ -881,21 +881,21 @@ task description or implementation notes, then continue.
   5. Implement until the focused tests pass and the behavior is ready
      for full local verification.
   6. When a newly observed module, failure signature, command, or tool changes
-     the active context, run `taskline task recall <id> --query "<observation>"`
+     the active context, run `runengram task recall <id> --query "<observation>"`
      and inspect newly matched experience before selecting another route.
   7. Capture each new reusable recovery or human correction immediately with
-     `taskline run event <run-id> --kind learning.discovered`. Do not wait
+     `runengram run event <run-id> --kind learning.discovered`. Do not wait
      until chat context is lost.
   8. Create or update a `Dev Notes` task doc summarizing the
      implementation, issues encountered, and any divergence from the
      `Spec` doc with the reason.
   9. For each recalled capsule used, record the observed result:
-     `taskline capsule use <capsule-id> --task <id> --outcome helpful|rejected|stale`.
+     `runengram capsule use <capsule-id> --task <id> --outcome helpful|rejected|stale`.
      Use `stale` when current code disproves once-valid knowledge. Include a
      short note explaining evidence.
-- **Advance:** `taskline task update <id> --state test`
+- **Advance:** `runengram task update <id> --state test`
 - **Checkpoint:** save implementation result, changed boundary, known risk,
-  and first verification command with `taskline run checkpoint <run-id>`.
+  and first verification command with `runengram run checkpoint <run-id>`.
 - **Graph receipts:** complete `technical-design`, `task-planning`,
   `implementation`, and `refactor` in dependency order. Mark `refactor`
   `skipped` only when no cleanup is needed and include the reason.
@@ -914,17 +914,17 @@ task description or implementation notes, then continue.
      `( cd cli && go test ./... )`, `( cd web && pnpm lint && pnpm test && pnpm build )`.
      Run `./scripts/test-skill.sh` when skill docs changed. Lint /
      format as the project requires.
-  3. For taskline itself, or any project with an embedded frontend,
+  3. For runengram itself, or any project with an embedded frontend,
      migrations, or runtime startup behavior, verify against the rebuilt
      running binary rather than only isolated tests.
   4. Self code-review for bugs, dead code, boundary issues.
      (capability: code review — `code-review:code-review`)
   5. Fix anything the review or tests surface; re-run the relevant
      tests after each fix.
-  6. Append `taskline run event <run-id> --kind verification.passed` for each
+  6. Append `runengram run event <run-id> --kind verification.passed` for each
      meaningful verified surface. Include command, environment, or artifact in
      `--details`.
-  7. Run `taskline learning list --task <id> --status pending`. Promote each
+  7. Run `runengram learning list --task <id> --status pending`. Promote each
      verified candidate with its evidence file, reject disproved guidance with
      a concrete reason, and leave genuinely unverified candidates pending.
   8. Create or update a `Test Report` task doc with reviewed test
@@ -934,9 +934,9 @@ task description or implementation notes, then continue.
      minimal message.
   10. When the project uses remote branches or PRs, push, open the PR, and
      attach its URL:
-     `taskline task link <task-id> --url <pr-url> --label "PR #N"`.
+     `runengram task link <task-id> --url <pr-url> --label "PR #N"`.
      Skip this for local-only, research, docs, and teams without PR workflow.
-- **Advance:** `taskline task update <id> --state review`
+- **Advance:** `runengram task update <id> --state review`
 - **Checkpoint:** save verification result and remaining review action.
 - **Graph receipt:** complete `verification` with the Test Report document ID
   and exact passing checks.
@@ -955,17 +955,17 @@ task description or implementation notes, then continue.
      record reviewer, checks, result, and remaining risks in a `Review Report`.
   4. If review surfaces a defect, move back to `dev`, fix it, and repeat
      verification.
-- **Advance:** `taskline task update <id> --state done` after acceptance
+- **Advance:** `runengram task update <id> --state done` after acceptance
   criteria pass and available evidence is recorded. The server allows this
   manual transition.
 - **Graph receipts:** complete `code-review` with the Review Report. Create an
   approval interrupt on `final-gate`, wait for the human response, then
-  complete `final-gate`. Run `taskline run graph <run-id>` and confirm every
+  complete `final-gate`. Run `runengram run graph <run-id>` and confirm every
   node is resolved and no interrupt is pending.
 - **Finish run:** after the task state change and, when enabled, graph
-  confirmation, call `taskline run finish <run-id> --status completed
+  confirmation, call `runengram run finish <run-id> --status completed
   --summary "<outcome and verification>"`.
-- **Drop back to dev** with `taskline task update <id> --state dev`
+- **Drop back to dev** with `runengram task update <id> --state dev`
   when review or CI surfaces a real defect. The bidirectional state
   machine exists for exactly this — don't delete-and-recreate.
 
@@ -975,8 +975,8 @@ task description or implementation notes, then continue.
   action, save a compact checkpoint: completed work, decisions, unresolved
   issue, and smallest concrete next step.
 - For a real blocker, use `--status blocked`; do not finish the run. On the
-  next invocation, `taskline run start` resumes the same run and
-  `taskline task resume` restores its checkpoint.
+  next invocation, `runengram run start` resumes the same run and
+  `runengram task resume` restores its checkpoint.
 - Use `run finish --status failed` only when execution ended and should not be
   resumed. A recoverable blocker is not failure.
 
@@ -984,7 +984,7 @@ task description or implementation notes, then continue.
 
 - **Trigger:** task is `done` after configured or manual verification.
 - **Actions:**
-  1. Run `taskline learning list --task <id> --status pending` again. Verify no
+  1. Run `runengram learning list --task <id> --status pending` again. Verify no
      candidate was silently promoted. Promote only with evidence, reject only
      with reason, and leave unresolved candidates pending.
   2. For durable verified exploration that was not a correction or recovery,
@@ -994,7 +994,7 @@ task description or implementation notes, then continue.
      against code.
   3. For Git-backed code work, return to the main branch, pull, and remove
      the completed local branch when project policy allows it.
-- The taskline task is already `done`; this stage is repo hygiene.
+- The runengram task is already `done`; this stage is repo hygiene.
 
 ## Fast path
 
@@ -1017,12 +1017,12 @@ manual review. Record whatever evidence exists; never invent missing systems.
 
 ## Gotchas
 
-- **`taskline status` fails for an existing identity** — do not register a new
+- **`runengram status` fails for an existing identity** — do not register a new
   name over it. Check `TASKLINE_SERVER` and
   `.config/taskline/agent.json`; repair or intentionally remove the stale local
   identity before registering again.
 - **`already registered as ...`** — this checkout already has a valid token.
-  Run `taskline status` and continue as that agent; do not rotate its identity.
+  Run `runengram status` and continue as that agent; do not rotate its identity.
 - **Forgot `--project`?** Export `TASKLINE_PROJECT` once at session
   start. Only `task create`, `task list`, `task search`, and
   `task next` accept `--project` — the rest (`get`, `update`, `delete`, `depend`,
@@ -1042,9 +1042,9 @@ manual review. Record whatever evidence exists; never invent missing systems.
   this registered agent. Either the project is empty, every non-done task is
   blocked, every available task is claimed by another live owner, or
   everything left is parked in `pending`. Run
-  `taskline task list --project <p> --state pending,start,spec,dev,test,review`
+  `runengram task list --project <p> --state pending,start,spec,dev,test,review`
   to see what's stuck and why. Do not automatically move `pending`
   tasks into `start`; promote them only when the task description,
   dependencies, or the user makes clear that they are ready to run.
 - **The user said "remind me to X"** — that's a one-off note, not a
-  task. Reply directly; don't create a taskline entry.
+  task. Reply directly; don't create a runengram entry.

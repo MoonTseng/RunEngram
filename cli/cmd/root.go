@@ -22,35 +22,35 @@ func SetVersion(v string) { version = v }
 func SetCommit(c string)  { commit = c }
 
 var rootCmd = &cobra.Command{
-	Use:   "taskline",
-	Short: "taskline CLI — agent-friendly task / kanban management",
-	Long: `Command-line client for taskline-server.
+	Use:   "runengram",
+	Short: "RunEngram CLI — agent-friendly engineering memory and work management",
+	Long: `Command-line client for runengram-server.
 
 Manage projects, tasks, dependencies, docs, and image attachments. Designed to be
 driven primarily by AI agents — output defaults to JSON when not attached to
 a TTY, exit codes are stable, stderr is reserved for diagnostics.
 
 Environment:
-  TASKLINE_SERVER   — base URL of taskline-server (default http://127.0.0.1:8787)
+  TASKLINE_SERVER   — base URL of runengram-server (default http://127.0.0.1:8787)
   TASKLINE_PROJECT  — default project (id or name); --project flag overrides
   Agent identity is loaded from .config/taskline/agent.json in the current directory
 
 Examples:
-  taskline status
-  taskline register --name agent-a
-  taskline project create --name demo
-  taskline task create --project demo --title "first task" --type feature
-  taskline task list --project demo --state start,dev,test
-  taskline task next --project demo
-  taskline task update <id> --state review
-  taskline task depend <id> --on <other-id>
-  taskline task doc create <id> --title Spec --file ./spec.md`,
+  runengram status
+  runengram register --name agent-a
+  runengram project create --name demo
+  runengram task create --project demo --title "first task" --type feature
+  runengram task list --project demo --state start,dev,test
+  runengram task next --project demo
+  runengram task update <id> --state review
+  runengram task depend <id> --on <other-id>
+  runengram task doc create <id> --title Spec --file ./spec.md`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&serverFlag, "server", "s", "", "taskline-server base URL (default $TASKLINE_SERVER or http://127.0.0.1:8787)")
+	rootCmd.PersistentFlags().StringVarP(&serverFlag, "server", "s", "", "runengram-server base URL (default $TASKLINE_SERVER or http://127.0.0.1:8787)")
 	rootCmd.PersistentFlags().StringVarP(&formatFlag, "format", "f", "", "output format: json, table (default: json in non-TTY, table in TTY)")
 	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "v", false, "verbose stderr logging")
 }
@@ -90,7 +90,7 @@ func requireIdentity() (*identity.Identity, error) {
 		return nil, err
 	}
 	if !ok {
-		return nil, fmt.Errorf("agent identity required: run taskline register --name <agent> in this directory")
+		return nil, fmt.Errorf("agent identity required: run runengram register --name <agent> in this directory")
 	}
 	return id, nil
 }

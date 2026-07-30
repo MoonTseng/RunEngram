@@ -1,7 +1,7 @@
 ---
 name: taskline-localtest
 description: |
-  Use when developing taskline itself (the server, web, or CLI in this
+  Use when developing runengram itself (the server, web, or CLI in this
   repo) and you need to verify your changes actually work against a
   real running binary — not just unit tests in isolation. Required
   whenever a change can affect the embedded web bundle, server-side
@@ -14,7 +14,7 @@ metadata:
   internal: true
 ---
 
-# taskline-localtest — verifying taskline changes locally
+# taskline-localtest — verifying runengram changes locally
 
 This skill closes the loop between "tests pass in isolation" and
 "the change is actually deployed and correct on the running binary".
@@ -30,12 +30,12 @@ to prevent.
 
 ## When to use
 
-- You're developing taskline itself (server / web / CLI).
+- You're developing runengram itself (server / web / CLI).
 - A change can affect the running binary's behavior at startup, on a
   request, or in the bundled web UI.
 
 When NOT to use:
-- You're just driving an existing taskline via the CLI to manage
+- You're just driving an existing runengram via the CLI to manage
   tasks — use `taskline-management` for that.
 - The change is documentation-only and touches no code path.
 
@@ -94,7 +94,7 @@ Verify the new binary is the one actually listening:
 
 ```bash
 lsof -i :8787 | head -3                  # confirm only the new PID owns the port
-ls -l dist/taskline-server               # timestamp matches this build
+ls -l dist/runengram-server               # timestamp matches this build
 curl -s http://127.0.0.1:8787/ | grep -oE 'assets/index-[^"]+\.js'
                                           # bundle hash matches the latest pnpm build
 ```
@@ -130,8 +130,8 @@ through the actual production code path on the running server.
   TTY-vs-pipe output detection, or env-var resolution — none of
   which `go test` exercises.
 
-If a step fails, drop the taskline task back to `dev` with
-`taskline task update <id> --state dev` and fix the root cause.
+If a step fails, drop the runengram task back to `dev` with
+`runengram task update <id> --state dev` and fix the root cause.
 Don't paper over it; the bidirectional state machine exists for
 exactly this.
 
@@ -150,7 +150,7 @@ exactly this.
 - `taskline-management` — the agent-facing skill that drives the CLI
   through `start → spec → dev → test → review → done`. **This** skill
   (`taskline-localtest`) is the concrete checklist for the
-  **test → review** transition specifically when developing taskline
+  **test → review** transition specifically when developing RunEngram
   itself.
 - The two are complementary: management says "run tests, then advance
   state"; localtest spells out what "tests" actually means for a

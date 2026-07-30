@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// Client is a thin HTTP wrapper for taskline-server.
+// Client is a thin HTTP wrapper for runengram-server.
 type Client struct {
 	BaseURL string
 	HTTP    *http.Client
@@ -918,10 +918,10 @@ func decodeServerError(resp *http.Response) error {
 	raw, _ := io.ReadAll(resp.Body)
 	var e errResp
 	if json.Unmarshal(raw, &e) == nil && e.Error != "" {
-		return fmt.Errorf("taskline %d: %s", resp.StatusCode, e.Error)
+		return fmt.Errorf("runengram %d: %s", resp.StatusCode, e.Error)
 	}
 	if msg := strings.TrimSpace(string(raw)); msg != "" {
-		return fmt.Errorf("taskline %d: %s", resp.StatusCode, msg)
+		return fmt.Errorf("runengram %d: %s", resp.StatusCode, msg)
 	}
-	return fmt.Errorf("taskline %d: %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+	return fmt.Errorf("runengram %d: %s", resp.StatusCode, http.StatusText(resp.StatusCode))
 }

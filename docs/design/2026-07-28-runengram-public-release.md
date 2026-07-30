@@ -36,10 +36,11 @@ working features from roadmap items.
 
 ## Naming migration
 
-RunEngram is the public product name. Existing `taskline-server` and `taskline`
-binary names remain temporarily for compatibility. Renaming packages, config
-keys, binaries, and skills is a separate migration because it changes the
-public agent contract.
+RunEngram is the public product name. Canonical binaries are
+`runengram-server`, `runengram`, and `runengram-service`. Release archives keep
+`taskline-server` and `taskline` compatibility symlinks. Go module paths,
+`TASKLINE_*` environment keys, and `.config/taskline` remain stable so existing
+data and automation do not require an atomic migration.
 
 ## Documentation
 

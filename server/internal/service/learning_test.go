@@ -409,7 +409,7 @@ func TestReviewerCanPromoteExpiredCandidateAsProjectRule(t *testing.T) {
 	require.NoError(t, err)
 	task, err := svc.CreateTask(ctx, project.ID, "Capture branch policy", "", model.TaskTypeFeature, 1, true, nil)
 	require.NoError(t, err)
-	_, err = svc.ClaimTask(ctx, task.ID, service.ClaimOptions{Owner: "codex", Lease: time.Millisecond})
+	_, err = svc.ClaimTask(ctx, task.ID, service.ClaimOptions{Owner: "codex", Lease: 100 * time.Millisecond})
 	require.NoError(t, err)
 	note, err := svc.CaptureLearningNote(ctx, service.CaptureLearningNoteInput{
 		ProjectID:    project.ID,
@@ -421,7 +421,10 @@ func TestReviewerCanPromoteExpiredCandidateAsProjectRule(t *testing.T) {
 		Scope:        "All feature work",
 	})
 	require.NoError(t, err)
-	time.Sleep(5 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		current, getErr := svc.GetTask(ctx, task.ID)
+		return getErr == nil && current.LeaseExpiresAt <= time.Now().UnixMilli()
+	}, time.Second, time.Millisecond)
 
 	promoted, err := svc.PromoteLearningNote(
 		ctx,

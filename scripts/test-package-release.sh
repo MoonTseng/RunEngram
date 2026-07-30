@@ -28,7 +28,7 @@ archive="${test_output}/runengram_${target_os}_${target_arch}.tar.gz"
 mkdir -p "${unpacked}"
 tar -xzf "${archive}" -C "${unpacked}"
 
-for executable in taskline taskline-server runengram; do
+for executable in runengram runengram-server runengram-service taskline taskline-server; do
   [[ -x "${unpacked}/bin/${executable}" ]] || {
     echo "missing executable: bin/${executable}" >&2
     exit 1
@@ -41,9 +41,9 @@ for document in LICENSE README.md README.zh-CN.md; do
   }
 done
 
-version_output="$("${unpacked}/bin/taskline" version)"
-[[ "${version_output}" == taskline\ v0.0.0-test* ]] || {
-  echo "unexpected taskline version: ${version_output}" >&2
+version_output="$("${unpacked}/bin/runengram" version)"
+[[ "${version_output}" == runengram\ v0.0.0-test* ]] || {
+  echo "unexpected runengram version: ${version_output}" >&2
   exit 1
 }
 

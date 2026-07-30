@@ -37,6 +37,6 @@ func main() {
 	hz := server.Default(server.WithHostPorts(cfg.ListenAddr))
 	h.Register(hz)
 
-	fmt.Fprintf(os.Stderr, "taskline-server listening on %s\n", cfg.ListenAddr)
+	fmt.Fprintf(os.Stderr, "runengram-server listening on %s\n", cfg.ListenAddr)
 	hz.Spin()
 }

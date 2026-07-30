@@ -1,6 +1,6 @@
 {
   "name": "runengram",
-  "version": "0.6.0+codex.20260729104110",
+  "version": "0.7.0+codex.20260730100559",
   "description": "Durable Agent work graphs and evidence-validated engineering memory with typed provenance and explainable recall.",
   "author": {
     "name": "MoonTseng",

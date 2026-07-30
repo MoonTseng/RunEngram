@@ -26,7 +26,7 @@ import (
 	"taskline_server/internal/store"
 )
 
-// startServer boots a taskline-server instance backed by a temp SQLite file +
+// startServer boots a runengram-server instance backed by a temp SQLite file +
 // random port. Returns the base URL and a shutdown func.
 func startServer(t *testing.T) (string, func()) {
 	return startServerWithVerifier(t, &mutablePullRequestVerifier{status: service.PullRequestStatus{
@@ -258,7 +258,7 @@ func TestStatusAndDuplicateRegistrationAtAPI(t *testing.T) {
 		map[string]any{"name": "replacement"}, token)
 	require.Equal(t, http.StatusConflict, status)
 	require.Contains(t, body, "already registered as status-agent")
-	require.Contains(t, body, "taskline status")
+	require.Contains(t, body, "runengram status")
 }
 
 type project struct {

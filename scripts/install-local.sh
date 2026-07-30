@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# scripts/install-local.sh — install taskline CLI for the current user.
+# scripts/install-local.sh — install RunEngram CLI for the current user.
 #
-#   1. builds the CLI (no CGO, no web bundle) into ~/.local/bin/taskline
+#   1. builds the CLI (no CGO, no web bundle) into ~/.local/bin/runengram
+#      and keeps ~/.local/bin/taskline as a compatibility symlink
 #   2. symlinks each skill under skills/ (the "public" tray, exported
 #      to other projects) into the well-known agent skill directories
 #      so any harness picks it up:
@@ -45,9 +46,13 @@ SKILL_HARNESS_DIRS=(
     "${HOME}/.claude/skills"
 )
 
-echo "[install] building CLI → ${BIN_DIR}/taskline" >&2
+echo "[install] building CLI → ${BIN_DIR}/runengram" >&2
 mkdir -p "${BIN_DIR}"
-( cd cli && go build -o "${BIN_DIR}/taskline" . )
+( cd cli && go build -o "${BIN_DIR}/runengram" . )
+if [[ -L "${BIN_DIR}/taskline" || -f "${BIN_DIR}/taskline" ]]; then
+    rm "${BIN_DIR}/taskline"
+fi
+ln -s runengram "${BIN_DIR}/taskline"
 
 link_skill() {
     local name="$1"

@@ -106,7 +106,7 @@ Other flows use the same protocol. A small JSON Workflow Adapter declares a
 template name, version, nodes, capabilities, node kinds, and dependencies:
 
 ```bash
-taskline run start <task-id> --agent-tool claude-code \
+runengram run start <task-id> --agent-tool claude-code \
   --workflow content-review \
   --workflow-file examples/workflows/content-review.json
 ```
@@ -188,8 +188,9 @@ Sources: [GitHub Copilot Memory](https://docs.github.com/en/copilot/concepts/age
 - Counts for runs, completion, blocked recovery, candidates, promotions,
   recalled tasks, and actual reuse results.
 
-The binaries still use the names `taskline-server` and `taskline` for
-compatibility. They will be renamed before 1.0.
+Canonical binaries are `runengram-server` and `runengram`. Release archives
+also include `taskline-server` and `taskline` compatibility symlinks so
+existing automation can migrate without downtime.
 
 ## How project notes are saved
 
@@ -266,7 +267,7 @@ reload instead of losing either correction.
 Agents use the same guard through the CLI:
 
 ```bash
-taskline capsule edit <capsule-id> \
+runengram capsule edit <capsule-id> \
   --expected-updated-at <updated-at-ms> \
   --summary "<corrected guidance>"
 ```
@@ -330,7 +331,7 @@ Start the server:
 
 ```bash
 cp .env.example .env
-./dist/taskline-server
+./dist/runengram-server
 ```
 
 Open:
@@ -344,26 +345,26 @@ In another terminal:
 ```bash
 export TASKLINE_PROJECT=demo
 
-./dist/taskline status
-./dist/taskline register --name agent-a
-./dist/taskline project create \
+./dist/runengram status
+./dist/runengram register --name agent-a
+./dist/runengram project create \
   --name demo \
   --description "RunEngram demo"
-./dist/taskline task create \
+./dist/runengram task create \
   --title "Create first verified task" \
   --type feature \
   --priority 1
-./dist/taskline task next --claim
+./dist/runengram task next --claim
 TASK_ID="<claimed-task-id>"
-./dist/taskline task context "$TASK_ID"
-./dist/taskline run start "$TASK_ID" --agent-tool codex \
+./dist/runengram task context "$TASK_ID"
+./dist/runengram run start "$TASK_ID" --agent-tool codex \
   --workflow engineering-flow
 RUN_ID="<run-id from previous output>"
-./dist/taskline run node "$RUN_ID" requirement-analysis \
+./dist/runengram run node "$RUN_ID" requirement-analysis \
   --status completed \
   --summary "Scope and acceptance criteria confirmed" \
   --evidence "Requirement contract reviewed"
-./dist/taskline run graph "$RUN_ID"
+./dist/runengram run graph "$RUN_ID"
 ```
 
 `task next` previews work by default. An agent must use `--claim` before
@@ -384,14 +385,14 @@ cd /path/to/your-project
 export TASKLINE_SERVER=http://127.0.0.1:8787
 export TASKLINE_PROJECT=your-project
 
-taskline status
+runengram status
 ```
 
 If `registered=false`, register the current working directory:
 
 ```bash
-taskline register --name your-agent-name
-taskline status
+runengram register --name your-agent-name
+runengram status
 ```
 
 Codex (default), Claude Code, or another CLI-capable agent can now follow
@@ -423,33 +424,33 @@ Chinese aliases `执行`, `方案`, and `待规划` work too. Add
 project, the skill selects it automatically.
 
 ```bash
-taskline task context <task-id>
-taskline learning capture --project your-project --task <task-id> \
+runengram task context <task-id>
+runengram learning capture --project your-project --task <task-id> \
   --kind human-correction \
   --trigger "Notion requirement could not be read directly" \
   --guidance "Use the project's requirement-import step before PRD analysis" \
   --scope "Requirements linked from Notion" --producer codex
-taskline learning list --project your-project --status pending
-taskline learning edit <learning-note-id> \
+runengram learning list --project your-project --status pending
+runengram learning edit <learning-note-id> \
   --trigger "Creating a feature branch for release 7.23.0" \
   --guidance "Use 7.23.0_feat/<english-requirement-name>" \
   --scope "Feature branches"
-taskline learning promote <learning-note-id> \
+runengram learning promote <learning-note-id> \
   --memory-class project-rule \
   --evidence-file ./verified-learning.md
-taskline learning reject <learning-note-id> \
+runengram learning reject <learning-note-id> \
   --reason "One-off environment issue; not reusable"
-taskline capsule list --project your-project --query webview
-taskline task recall <task-id> --query "Gradle daemon failed in three modules"
-taskline capsule create --project your-project --source-task <task-id> \
+runengram capsule list --project your-project --query webview
+runengram task recall <task-id> --query "Gradle daemon failed in three modules"
+runengram capsule create --project your-project --source-task <task-id> \
   --memory-class experience --trigger "Deleting a compatibility service" \
   --title "Reusable boundary" --summary "Verified finding" \
   --scope "Affected module" --evidence-file ./evidence.md \
   --fingerprint module-name --producer codex
-taskline capsule use <capsule-id> --task <task-id> --outcome helpful
-taskline capsule metrics --project your-project
-taskline task resume <task-id>
-taskline project delete temporary-smoke-project
+runengram capsule use <capsule-id> --task <task-id> --outcome helpful
+runengram capsule metrics --project your-project
+runengram task resume <task-id>
+runengram project delete temporary-smoke-project
 ```
 
 ## Architecture

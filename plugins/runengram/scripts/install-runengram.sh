@@ -70,7 +70,7 @@ fi
 
 mkdir -p "${temp_dir}/unpacked"
 tar -xzf "${temp_dir}/${archive}" -C "${temp_dir}/unpacked"
-for required in bin/taskline bin/taskline-server bin/runengram; do
+for required in bin/runengram bin/runengram-server bin/runengram-service; do
   [[ -x "${temp_dir}/unpacked/${required}" ]] || {
     echo "Release archive missing executable ${required}." >&2
     exit 1
@@ -95,9 +95,10 @@ link_binary() {
   ln -sfn "${source}" "${target}"
 }
 
-link_binary taskline
 link_binary runengram
-"${bin_dir}/runengram" restart
+link_binary runengram-service
+link_binary taskline
+"${bin_dir}/runengram-service" restart
 
 echo "[runengram] installed ${version} for ${os}/${arch}"
 echo "[runengram] UI: http://127.0.0.1:8787"

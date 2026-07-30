@@ -106,7 +106,7 @@ func (v *Verifier) VerifyPullRequest(ctx context.Context, ref service.PullReques
 			err = errors.New("empty token")
 		}
 		return service.PullRequestStatus{}, fmt.Errorf(
-			"GitHub authentication unavailable: set TASKLINE_GITHUB_TOKEN, GITHUB_TOKEN, or GH_TOKEN for taskline-server, or run gh auth login on the server host: %w",
+			"GitHub authentication unavailable: set TASKLINE_GITHUB_TOKEN, GITHUB_TOKEN, or GH_TOKEN for runengram-server, or run gh auth login on the server host: %w",
 			err,
 		)
 	}
@@ -197,7 +197,7 @@ func (v *Verifier) query(ctx context.Context, token string, ref service.PullRequ
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "taskline-server")
+	req.Header.Set("User-Agent", "runengram-server")
 
 	resp, err := v.httpClient.Do(req)
 	if err != nil {

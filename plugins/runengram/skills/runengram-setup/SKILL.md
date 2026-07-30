@@ -13,8 +13,9 @@ Install complete local runtime from checksum-verified GitHub release artifacts.
 2. Tell user installer writes only to:
    - `~/.local/share/runengram`
    - `~/.local/state/runengram`
-   - `~/.local/bin/taskline`
    - `~/.local/bin/runengram`
+   - `~/.local/bin/runengram-service`
+   - `~/.local/bin/taskline` (compatibility symlink)
 3. Run installer:
 
 ```bash
@@ -24,17 +25,17 @@ bash <plugin-root>/scripts/install-runengram.sh
 To install specific version:
 
 ```bash
-RUNENGRAM_VERSION=v0.6.0 bash <plugin-root>/scripts/install-runengram.sh
+RUNENGRAM_VERSION=v0.7.0 bash <plugin-root>/scripts/install-runengram.sh
 ```
 
 4. Run:
 
 ```bash
+runengram-service status
 runengram status
-taskline status
 ```
 
-5. If healthy, run `runengram open`.
+5. If healthy, run `runengram-service open`.
 6. Tell user to open new Codex task after plugin upgrade so updated skills load.
 
 ## Safety

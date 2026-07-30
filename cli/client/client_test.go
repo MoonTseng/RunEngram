@@ -247,7 +247,7 @@ func TestUpdateTaskPreservesStateEntryGuidance(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusConflict)
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"error": "state entry blocked: cannot enter review: attach a valid GitHub PR first with taskline task link task-one --url https://github.com/<owner>/<repo>/pull/<number>",
+			"error": "state entry blocked: cannot enter review: attach a valid GitHub PR first with runengram task link task-one --url https://github.com/<owner>/<repo>/pull/<number>",
 		})
 	}))
 	defer srv.Close()
@@ -257,7 +257,7 @@ func TestUpdateTaskPreservesStateEntryGuidance(t *testing.T) {
 	if err == nil {
 		t.Fatal("UpdateTask should return the server error")
 	}
-	for _, fragment := range []string{"taskline 409", "cannot enter review", "taskline task link task-one"} {
+	for _, fragment := range []string{"runengram 409", "cannot enter review", "runengram task link task-one"} {
 		if !strings.Contains(err.Error(), fragment) {
 			t.Fatalf("error %q does not contain %q", err, fragment)
 		}
