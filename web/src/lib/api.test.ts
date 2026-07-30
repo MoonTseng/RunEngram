@@ -4,6 +4,7 @@ import {
   createTaskDoc,
   deleteTaskDoc,
   deleteTaskImage,
+  getTask,
   getTaskDoc,
   getTaskContext,
   listLearningNotes,
@@ -141,6 +142,45 @@ describe("listTaskEvents", () => {
     await expect(listTaskEvents("task/one")).resolves.toEqual([event]);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/tasks/task%2Fone/events",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ "X-Taskline-Client": "web" }),
+      })
+    );
+  });
+});
+
+describe("getTask", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("loads an attached source task with an encoded task id", async () => {
+    const task = {
+      id: "task/one",
+      project_id: "project-1",
+      title: "Verify dependency placement",
+      description: "",
+      type: "refactor",
+      state: "done",
+      priority: 1,
+      labels: [],
+      docs: [],
+      links: [],
+      created_at: 1780051741142,
+      updated_at: 1780051741142,
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(task), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getTask("task/one")).resolves.toEqual(task);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/tasks/task%2Fone",
       expect.objectContaining({
         method: "GET",
         headers: expect.objectContaining({ "X-Taskline-Client": "web" }),

@@ -414,6 +414,10 @@ export async function listTasks(projectIdOrName: string): Promise<Task[]> {
   return r.tasks ?? [];
 }
 
+export async function getTask(taskId: string): Promise<Task> {
+  return request<Task>("GET", `/api/v1/tasks/${encodeURIComponent(taskId)}`);
+}
+
 export async function getTaskContext(taskId: string): Promise<ContextSnapshot> {
   return request<ContextSnapshot>(
     "GET",
