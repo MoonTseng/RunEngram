@@ -37,6 +37,57 @@ func (s *Service) ListMemoryImpacts(
 	return s.st.ListMemoryImpacts(ctx, filter)
 }
 
+func (s *Service) RecordCapsuleImpact(
+	ctx context.Context,
+	input RecordUsageInput,
+	state model.MemoryImpactState,
+	expectedUpdatedAt int64,
+) (*model.MemoryImpact, error) {
+	capsule, err := s.st.GetCapsule(ctx, strings.TrimSpace(input.CapsuleID))
+	if err != nil {
+		return nil, err
+	}
+	task, err := s.st.GetTask(ctx, strings.TrimSpace(input.TaskID))
+	if err != nil {
+		return nil, err
+	}
+	if capsule.ProjectID != task.ProjectID {
+		return nil, fmt.Errorf("%w: capsule and task belong to different projects", store.ErrConflict)
+	}
+	impacts, err := s.st.ListMemoryImpacts(ctx, store.MemoryImpactFilter{
+		TaskID: task.ID, CapsuleID: capsule.ID, Limit: 1,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var impact *model.MemoryImpact
+	if len(impacts) == 0 {
+		impact, err = s.st.UpsertMemoryImpactRecall(ctx, &model.MemoryImpact{
+			ProjectID: task.ProjectID, TaskID: task.ID, CapsuleID: capsule.ID,
+			State: model.MemoryImpactRecalled, RecallSource: "legacy-usage",
+		})
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		impact = &impacts[0]
+	}
+	if expectedUpdatedAt == 0 {
+		expectedUpdatedAt = impact.UpdatedAt
+	}
+	if state.Terminal() && len(input.Evidence) == 0 {
+		input.Evidence = []model.MemoryImpactEvidence{{
+			Kind: "observation", Ref: "legacy-capsule-usage",
+			Summary: strings.TrimSpace(input.Notes),
+		}}
+	}
+	return s.RecordMemoryImpact(ctx, RecordMemoryImpactInput{
+		ImpactID: impact.ID, State: state, Stage: input.Stage,
+		Notes: input.Notes, Evidence: input.Evidence, Actor: input.Actor,
+		AgentName: input.AgentName, ExpectedUpdatedAt: expectedUpdatedAt,
+	})
+}
+
 func (s *Service) RecordMemoryImpact(
 	ctx context.Context,
 	input RecordMemoryImpactInput,

@@ -62,6 +62,7 @@ func (h *Handler) Register(s *server.Hertz) {
 	v1.GET("/projects/:project/learning-notes", h.listProjectLearningNotes)
 	v1.POST("/projects/:project/learning-notes", h.captureLearningNote)
 	v1.GET("/projects/:project/learning-metrics", h.learningMetrics)
+	v1.GET("/projects/:project/memory-impacts", h.listProjectMemoryImpacts)
 
 	v1.GET("/tasks/:id", h.getTask)
 	v1.GET("/tasks/:id/context", h.taskContext)
@@ -71,6 +72,7 @@ func (h *Handler) Register(s *server.Hertz) {
 	v1.GET("/tasks/:id/runs", h.listAgentRuns)
 	v1.POST("/tasks/:id/runs", h.startOrResumeRun)
 	v1.GET("/tasks/:id/learning-notes", h.listTaskLearningNotes)
+	v1.GET("/tasks/:id/memory-impacts", h.listTaskMemoryImpacts)
 	v1.PATCH("/tasks/:id", h.updateTask)
 	v1.DELETE("/tasks/:id", h.deleteTask)
 	v1.POST("/tasks/:id/claim", h.claimTask)
@@ -91,6 +93,8 @@ func (h *Handler) Register(s *server.Hertz) {
 	v1.GET("/capsules/:id", h.getCapsule)
 	v1.PATCH("/capsules/:id", h.updateCapsule)
 	v1.POST("/capsules/:id/usages", h.recordCapsuleUsage)
+	v1.GET("/capsules/:id/memory-impacts", h.listCapsuleMemoryImpacts)
+	v1.PATCH("/memory-impacts/:id", h.updateMemoryImpact)
 	v1.POST("/capsules/:id/relations", h.createMemoryRelation)
 	v1.DELETE("/memory-relations/:id", h.deleteMemoryRelation)
 	v1.POST("/learning-notes/:id/promote", h.promoteLearningNote)
@@ -561,9 +565,13 @@ func (h *Handler) deleteMemoryRelation(ctx context.Context, c *app.RequestContex
 }
 
 type recordCapsuleUsageReq struct {
-	TaskID  string `json:"task_id"`
-	Outcome string `json:"outcome"`
-	Notes   string `json:"notes"`
+	TaskID            string                       `json:"task_id"`
+	Outcome           string                       `json:"outcome"`
+	Stage             string                       `json:"stage"`
+	Notes             string                       `json:"notes"`
+	Evidence          []model.MemoryImpactEvidence `json:"evidence"`
+	Actor             string                       `json:"actor"`
+	ExpectedUpdatedAt int64                        `json:"expected_updated_at"`
 }
 
 func (h *Handler) recordCapsuleUsage(ctx context.Context, c *app.RequestContext) {
@@ -572,15 +580,41 @@ func (h *Handler) recordCapsuleUsage(ctx context.Context, c *app.RequestContext)
 		writeError(c, http.StatusBadRequest, err)
 		return
 	}
-	usage, err := h.svc.RecordCapsuleUsage(ctx, service.RecordUsageInput{
-		CapsuleID: c.Param("id"), TaskID: req.TaskID,
-		Outcome: model.CapsuleOutcome(req.Outcome), Notes: req.Notes,
-	})
+	agent, ok := h.optionalAgent(ctx, c)
+	if !ok {
+		return
+	}
+	agentName := ""
+	actor := strings.TrimSpace(req.Actor)
+	if agent != nil {
+		agentName, actor = agent.Name, agent.Name
+	} else if actor == "" {
+		actor = "web"
+	}
+	state := model.MemoryImpactApplied
+	switch strings.TrimSpace(req.Outcome) {
+	case string(model.CapsuleOutcomeUsed):
+	case "ignored":
+		state = model.MemoryImpactIgnored
+	case string(model.CapsuleOutcomeHelpful):
+		state = model.MemoryImpactHelpful
+	case string(model.CapsuleOutcomeRejected):
+		state = model.MemoryImpactRejected
+	case string(model.CapsuleOutcomeStale):
+		state = model.MemoryImpactStale
+	default:
+		writeError(c, http.StatusBadRequest, errors.New("invalid capsule outcome"))
+		return
+	}
+	impact, err := h.svc.RecordCapsuleImpact(ctx, service.RecordUsageInput{
+		CapsuleID: c.Param("id"), TaskID: req.TaskID, Stage: req.Stage,
+		Notes: req.Notes, Evidence: req.Evidence, Actor: actor, AgentName: agentName,
+	}, state, req.ExpectedUpdatedAt)
 	if err != nil {
 		writeServiceError(c, err)
 		return
 	}
-	writeJSON(c, http.StatusOK, usage)
+	writeJSON(c, http.StatusOK, impact)
 }
 
 func (h *Handler) learningMetrics(ctx context.Context, c *app.RequestContext) {

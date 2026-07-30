@@ -60,8 +60,13 @@ func init() {
 	_ = taskRecallCmd.MarkFlagRequired("query")
 
 	capsuleUseCmd.Flags().String("task", "", "task using this capsule (required)")
-	capsuleUseCmd.Flags().String("outcome", "helpful", "used|helpful|rejected|stale")
-	capsuleUseCmd.Flags().String("notes", "", "short outcome note")
+	capsuleUseCmd.Flags().String("outcome", "helpful", "used|ignored|helpful|rejected|stale")
+	capsuleUseCmd.Flags().String("stage", "", "task stage where memory affected work")
+	capsuleUseCmd.Flags().String("notes", "", "what changed because of this memory")
+	capsuleUseCmd.Flags().String("evidence-kind", "", "command|task-doc|task-event|link|code-reference|observation")
+	capsuleUseCmd.Flags().String("evidence-ref", "", "stable document, event, command, URL, or code reference")
+	capsuleUseCmd.Flags().String("evidence-summary", "", "observed result")
+	capsuleUseCmd.Flags().Int64("expected-updated-at", 0, "last observed impact updated_at when correcting an outcome")
 	_ = capsuleUseCmd.MarkFlagRequired("task")
 
 	capsuleRelateCmd.Flags().String("type", "", "derived-from|validated-by|applies-to|supersedes|conflicts-with|caused-by")
@@ -242,15 +247,55 @@ var capsuleUseCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskID, _ := cmd.Flags().GetString("task")
 		outcome, _ := cmd.Flags().GetString("outcome")
+		stage, _ := cmd.Flags().GetString("stage")
 		notes, _ := cmd.Flags().GetString("notes")
-		usage, err := newClient().RecordCapsuleUsage(args[0], taskID, outcome, notes)
+		evidenceKind, _ := cmd.Flags().GetString("evidence-kind")
+		evidenceRef, _ := cmd.Flags().GetString("evidence-ref")
+		evidenceSummary, _ := cmd.Flags().GetString("evidence-summary")
+		expectedUpdatedAt, _ := cmd.Flags().GetInt64("expected-updated-at")
+		if err := validateCapsuleUse(outcome, notes, evidenceKind, evidenceRef, evidenceSummary); err != nil {
+			return err
+		}
+		input := client.RecordCapsuleUsageInput{
+			TaskID: taskID, Outcome: outcome, Stage: stage, Notes: notes,
+			ExpectedUpdatedAt: expectedUpdatedAt,
+		}
+		if strings.TrimSpace(evidenceKind) != "" {
+			input.Evidence = []client.MemoryImpactEvidence{{
+				Kind: evidenceKind, Ref: evidenceRef, Summary: evidenceSummary,
+			}}
+		}
+		impact, err := newClient().RecordCapsuleUsage(args[0], input)
 		if err != nil {
 			return err
 		}
-		return output.Render(os.Stdout, output.Resolve(formatFlag), usage, func(w io.Writer) {
-			fmt.Fprintf(w, "Capsule %s → task %s: %s\n", usage.CapsuleID, usage.TaskID, usage.Outcome)
+		return output.Render(os.Stdout, output.Resolve(formatFlag), impact, func(w io.Writer) {
+			fmt.Fprintf(w, "Capsule %s → task %s: %s\n", impact.CapsuleID, impact.TaskID, impact.State)
 		})
 	},
+}
+
+func validateCapsuleUse(outcome, notes, evidenceKind, evidenceRef, evidenceSummary string) error {
+	outcome = strings.TrimSpace(outcome)
+	switch outcome {
+	case "used", "ignored", "helpful", "rejected", "stale":
+	default:
+		return fmt.Errorf("invalid outcome %q; use used|ignored|helpful|rejected|stale", outcome)
+	}
+	if strings.TrimSpace(notes) == "" {
+		return errors.New("--notes is required")
+	}
+	hasKind := strings.TrimSpace(evidenceKind) != ""
+	hasResult := strings.TrimSpace(evidenceRef) != "" || strings.TrimSpace(evidenceSummary) != ""
+	if hasKind != hasResult {
+		return errors.New("evidence requires --evidence-kind and --evidence-ref or --evidence-summary")
+	}
+	if outcome == "helpful" || outcome == "rejected" || outcome == "stale" {
+		if !hasKind || !hasResult {
+			return errors.New("final outcome requires evidence")
+		}
+	}
+	return nil
 }
 
 var capsuleArchiveCmd = &cobra.Command{

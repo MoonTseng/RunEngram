@@ -186,6 +186,40 @@ type CapsuleUsage struct {
 	UpdatedAt int64  `json:"updated_at"`
 }
 
+type MemoryImpactEvidence struct {
+	Kind    string `json:"kind"`
+	Ref     string `json:"ref"`
+	Summary string `json:"summary"`
+}
+
+type MemoryImpact struct {
+	ID              string                 `json:"id"`
+	ProjectID       string                 `json:"project_id"`
+	TaskID          string                 `json:"task_id"`
+	CapsuleID       string                 `json:"capsule_id"`
+	State           string                 `json:"state"`
+	RecallSource    string                 `json:"recall_source"`
+	ContextRevision string                 `json:"context_revision"`
+	RecallScore     float64                `json:"recall_score"`
+	RecallReasons   []string               `json:"recall_reasons"`
+	Stage           string                 `json:"stage"`
+	Notes           string                 `json:"notes"`
+	Evidence        []MemoryImpactEvidence `json:"evidence"`
+	Actor           string                 `json:"actor"`
+	CreatedAt       int64                  `json:"created_at"`
+	UpdatedAt       int64                  `json:"updated_at"`
+	ResolvedAt      int64                  `json:"resolved_at"`
+}
+
+type RecordCapsuleUsageInput struct {
+	TaskID            string                 `json:"task_id"`
+	Outcome           string                 `json:"outcome"`
+	Stage             string                 `json:"stage,omitempty"`
+	Notes             string                 `json:"notes"`
+	Evidence          []MemoryImpactEvidence `json:"evidence,omitempty"`
+	ExpectedUpdatedAt int64                  `json:"expected_updated_at,omitempty"`
+}
+
 type LearningMetrics struct {
 	CapsuleCount       int     `json:"capsule_count"`
 	ActiveCapsuleCount int     `json:"active_capsule_count"`
@@ -517,10 +551,9 @@ func (c *Client) UpdateCapsule(id string, in UpdateCapsuleInput) (*ExplorationCa
 	return &out, nil
 }
 
-func (c *Client) RecordCapsuleUsage(id, taskID, outcome, notes string) (*CapsuleUsage, error) {
-	var out CapsuleUsage
-	body := map[string]string{"task_id": taskID, "outcome": outcome, "notes": notes}
-	if err := c.do("POST", "/api/v1/capsules/"+url.PathEscape(id)+"/usages", body, &out); err != nil {
+func (c *Client) RecordCapsuleUsage(id string, input RecordCapsuleUsageInput) (*MemoryImpact, error) {
+	var out MemoryImpact
+	if err := c.do("POST", "/api/v1/capsules/"+url.PathEscape(id)+"/usages", input, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

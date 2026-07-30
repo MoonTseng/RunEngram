@@ -1507,6 +1507,73 @@ func TestAutomaticLearningNoteLoopAtAPI(t *testing.T) {
 	require.Equal(t, 0.5, metrics.PromotionRate)
 }
 
+func TestMemoryImpactReceiptLoopAtAPI(t *testing.T) {
+	base, stop := startServer(t)
+	defer stop()
+	token := registerAgent(t, base, "impact-agent")
+	jsonReq(t, http.MethodPost, base+"/api/v1/projects", map[string]any{
+		"name": "impact-api",
+	}, &project{})
+
+	var capsule model.ExplorationCapsule
+	st := jsonReq(t, http.MethodPost, base+"/api/v1/projects/impact-api/capsules", map[string]any{
+		"memory_class": "project-rule",
+		"title":        "Do not run Gradle",
+		"summary":      "Use static inspection unless developer requests a build.",
+		"scope":        "CamScanner",
+		"evidence":     "Verified project policy.",
+	}, &capsule)
+	require.Equal(t, http.StatusCreated, st)
+
+	var created task
+	st = jsonReq(t, http.MethodPost, base+"/api/v1/projects/impact-api/tasks", map[string]any{
+		"title": "Inspect password flow", "description": "Do not build",
+		"type": "feature", "auto_start": true,
+	}, &created)
+	require.Equal(t, http.StatusCreated, st)
+	st = jsonReqWithToken(t, http.MethodPost, base+"/api/v1/tasks/"+created.ID+"/claim",
+		map[string]any{"lease": "1h"}, &created, token)
+	require.Equal(t, http.StatusOK, st)
+
+	var snapshot model.ContextSnapshot
+	st = jsonReq(t, http.MethodGet, base+"/api/v1/tasks/"+created.ID+"/context", nil, &snapshot)
+	require.Equal(t, http.StatusOK, st)
+	require.Len(t, snapshot.ProjectRules, 1)
+
+	var impacts []model.MemoryImpact
+	st = jsonReq(t, http.MethodGet, base+"/api/v1/tasks/"+created.ID+"/memory-impacts", nil, &impacts)
+	require.Equal(t, http.StatusOK, st)
+	require.Len(t, impacts, 1)
+	require.Equal(t, model.MemoryImpactRecalled, impacts[0].State)
+
+	var applied model.MemoryImpact
+	st = jsonReqWithToken(t, http.MethodPost, base+"/api/v1/capsules/"+capsule.ID+"/usages", map[string]any{
+		"task_id": created.ID, "outcome": "used", "stage": "dev",
+		"notes": "Skipped Gradle and used static inspection.",
+	}, &applied, token)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, model.MemoryImpactApplied, applied.State)
+
+	var helpful model.MemoryImpact
+	st = jsonReqWithToken(t, http.MethodPost, base+"/api/v1/capsules/"+capsule.ID+"/usages", map[string]any{
+		"task_id": created.ID, "outcome": "helpful", "stage": "test",
+		"notes":               "Rule prevented unsupported local build.",
+		"expected_updated_at": applied.UpdatedAt,
+		"evidence": []map[string]any{{
+			"kind": "task-doc", "ref": "doc:test-report",
+			"summary": "Test report confirms no Gradle command was executed.",
+		}},
+	}, &helpful, token)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, model.MemoryImpactHelpful, helpful.State)
+
+	var capsuleHistory []model.MemoryImpact
+	st = jsonReq(t, http.MethodGet, base+"/api/v1/capsules/"+capsule.ID+"/memory-impacts", nil, &capsuleHistory)
+	require.Equal(t, http.StatusOK, st)
+	require.Len(t, capsuleHistory, 1)
+	require.Equal(t, created.ID, capsuleHistory[0].TaskID)
+}
+
 func init() {
 	// Quiet Hertz banner on test stdout; failures still print stack traces.
 	_ = fmt.Sprintln

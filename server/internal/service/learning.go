@@ -673,35 +673,6 @@ func (s *Service) RecordCapsuleUsage(ctx context.Context, input RecordUsageInput
 	if !input.Outcome.Valid() {
 		return nil, fmt.Errorf("invalid capsule outcome %q", input.Outcome)
 	}
-	capsule, err := s.st.GetCapsule(ctx, input.CapsuleID)
-	if err != nil {
-		return nil, err
-	}
-	task, err := s.st.GetTask(ctx, input.TaskID)
-	if err != nil {
-		return nil, err
-	}
-	if capsule.ProjectID != task.ProjectID {
-		return nil, fmt.Errorf("%w: capsule and task belong to different projects", store.ErrConflict)
-	}
-	impacts, err := s.st.ListMemoryImpacts(ctx, store.MemoryImpactFilter{
-		TaskID: task.ID, CapsuleID: capsule.ID, Limit: 1,
-	})
-	if err != nil {
-		return nil, err
-	}
-	var impact *model.MemoryImpact
-	if len(impacts) == 0 {
-		impact, err = s.st.UpsertMemoryImpactRecall(ctx, &model.MemoryImpact{
-			ProjectID: task.ProjectID, TaskID: task.ID, CapsuleID: capsule.ID,
-			State: model.MemoryImpactRecalled, RecallSource: "legacy-usage",
-		})
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		impact = &impacts[0]
-	}
 	state := model.MemoryImpactApplied
 	switch input.Outcome {
 	case model.CapsuleOutcomeHelpful:
@@ -718,15 +689,13 @@ func (s *Service) RecordCapsuleUsage(ctx context.Context, input RecordUsageInput
 			Summary: strings.TrimSpace(input.Notes),
 		}}
 	}
-	if _, err := s.RecordMemoryImpact(ctx, RecordMemoryImpactInput{
-		ImpactID: impact.ID, State: state, Stage: input.Stage,
-		Notes: input.Notes, Evidence: evidence, Actor: input.Actor,
-		AgentName: input.AgentName, ExpectedUpdatedAt: impact.UpdatedAt,
-	}); err != nil {
+	input.Evidence = evidence
+	if _, err := s.RecordCapsuleImpact(ctx, input, state, 0); err != nil {
 		return nil, err
 	}
 	return s.st.UpsertCapsuleUsage(ctx, &model.CapsuleUsage{
-		CapsuleID: capsule.ID, TaskID: task.ID, Outcome: input.Outcome, Notes: strings.TrimSpace(input.Notes),
+		CapsuleID: input.CapsuleID, TaskID: input.TaskID,
+		Outcome: input.Outcome, Notes: strings.TrimSpace(input.Notes),
 	})
 }
 
