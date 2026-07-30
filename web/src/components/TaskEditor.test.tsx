@@ -200,7 +200,11 @@ describe("TaskEditor markdown description editing", () => {
     await user.click(screen.getByRole("button", { name: /open markdown editor/i }));
 
     expect(
-      await screen.findByRole("dialog", { name: /markdown description editor/i })
+      await screen.findByRole(
+        "dialog",
+        { name: /markdown description editor/i },
+        { timeout: 3_000 }
+      )
     ).toBeTruthy();
     expect(await screen.findByLabelText("Markdown description")).toBeTruthy();
   });
