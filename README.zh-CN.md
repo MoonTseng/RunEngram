@@ -162,9 +162,13 @@ Work Graph 不是每项任务都强制开启。跨会话、存在独立分支、
   `supersedes`、`conflicts-with` 和 `caused-by`，不需要额外图数据库；
 - 每次召回返回上下文版本、匹配原因、得分和冲突警告，Agent 能说明为什么采用
   某条经验；
+- 每条被召回的项目规则和场景经验都会生成影响回执，明确区分“进入上下文”、
+  “实际采用”和“验证有效”，不再把召回直接当作提效；
 - 已晋升经验使用乐观并发更新，旧浏览器页面不会覆盖其他人刚完成的纠正；
 - 候选经过人工确认和证据验证后才进入项目记忆；
-- 统计执行次数、完成率、阻塞恢复率、候选、晋升、召回任务数和实际复用结果。
+- 展示召回 → 采用 → 确认漏斗、任务级决策、验证证据和单条经验的影响历史；
+- 统计执行次数、完成率、阻塞恢复率、候选、晋升、召回覆盖率、采用率、
+  确认率和实际结果。
 
 正式二进制名称已经统一为 `runengram-server` 和 `runengram`。发布包仍提供
 `taskline-server`、`taskline` 兼容软链接，现有自动化可以逐步迁移。
@@ -176,8 +180,10 @@ Work Graph 不是每项任务都强制开启。跨会话、存在独立分支、
 3. 可复用项目约定、人工纠正或成功恢复路径生成待验证经验；
 4. 开发者可以修改它的触发条件、建议做法和适用范围；
 5. 候选附上证据后由人选择类型：项目规则广泛适用，场景经验按相关性召回；
-6. 后续任务记录这条经验是否有效、被拒绝或已经过期；不同任务的复用结果会
-   更新可信度和验证状态。
+6. 后续每次召回先记录哪些经验进入 Agent 上下文以及召回原因；
+7. Agent 或开发者记录它是否改变了执行，或者为何不适用；
+8. 验证阶段用命令、文档、事件、链接、代码位置或观察结果确认它有效、无效或
+   已过期；不同任务的复用结果会更新可信度和验证状态。
 
 RunEngram 不会复制完整聊天记录，也不保存密码、Token、隐藏推理或未经确认
 的猜测。后续任务只会召回审核过的经验。
@@ -196,6 +202,33 @@ RunEngram 不会复制完整聊天记录，也不保存密码、Token、隐藏�
 当前任务的行动台会显示“学习回执”；工程记忆页展示来源任务和待验证候选，
 并支持人工编辑。待验证经验不会影响其他任务。
 
+### 如何看到经验是否真正被复用
+
+“被召回”不等于“有效”。RunEngram 为每个任务和每条召回经验保留一份影响回执：
+
+| 回执状态 | 含义 |
+| --- | --- |
+| 已召回 | 进入任务初始上下文或执行中的动态召回 |
+| 已采用 | 改变了决策、命令、文件范围或实现路线 |
+| 已忽略 | Agent 已检查，并记录了不适用原因 |
+| 有效 | 验证证据确认这条经验帮助或正确约束了执行 |
+| 无效 | 当前任务证据与经验结论冲突 |
+| 已过期 | 当前代码或规范使原本有效的经验失效 |
+| 未确认 | 任务结束时仍未记录采用、忽略或最终结果 |
+
+任务详情展示匹配到的规则、召回原因、采用阶段、执行者、说明和证据；**工程记忆**
+同时展示项目级漏斗和每条经验在不同任务中的影响历史。例如“Agent 遵守经验，
+没有执行被禁止的全量 Gradle 编译”会成为可核对回执，不再只存在聊天记录里。
+
+指标只使用真实回执：
+
+- **召回覆盖率**：召回过经验的已完成 Agent 任务 ÷ 已完成 Agent 任务；
+- **采用率**：至少采用一条经验的任务 ÷ 召回过经验的任务；
+- **确认率**：记录有效、无效或过期结果的任务 ÷ 采用或已有最终结论的任务。
+
+历史上下文快照只能回填为“已召回”。RunEngram 不猜测过去是否采用、是否有效，
+也不虚构节省时长。
+
 ### 如何确认经验有效
 
 | 状态 | 含义 | 对后续任务的影响 |
@@ -207,7 +240,8 @@ RunEngram 不会复制完整聊天记录，也不保存密码、Token、隐藏�
 | 已过期 | 当前代码或工具已证明不再成立 | 不再召回 |
 
 同一任务对同一条经验只保留一个结果，不能靠重复点击“有效”刷高可信度。
-初始可信度为 0.60；有效一次加 0.10，无效一次减 0.15，过期归零。这表示
+经验仅仅进入上下文时不能标记为“有效”。初始可信度为 0.60；有效一次加
+0.10，无效一次减 0.15，过期归零。这表示
 实际复用可信度，不虚构“节省了多少小时”。
 
 审核待验证经验时，进入**工程记忆**并选择核对方式：命令或测试、代码或配置、
@@ -419,7 +453,12 @@ runengram capsule create --project your-project --source-task <任务 ID> \
   --title "可复用边界" --summary "已经验证的结论" \
   --scope "适用模块" --evidence-file ./evidence.md \
   --fingerprint module-name --producer codex
-runengram capsule use <胶囊 ID> --task <任务 ID> --outcome helpful
+runengram capsule use <胶囊 ID> --task <任务 ID> --outcome used \
+  --stage dev --notes "改变了验证路线"
+runengram capsule use <胶囊 ID> --task <任务 ID> --outcome helpful \
+  --stage test --notes "聚焦检查通过" \
+  --evidence-kind command --evidence-ref "./gradlew :module:test" \
+  --evidence-summary "退出码为 0"
 runengram capsule metrics --project your-project
 runengram task resume <任务 ID>
 runengram project delete temporary-smoke-project
@@ -440,6 +479,7 @@ flowchart LR
     Evidence["验证证据"]
     Candidate["待验证 Learning Note"]
     Learning["已验证 Exploration Capsule"]
+    Impact["召回 → 采用 → 结果回执"]
     Store[("SQLite + Markdown")]
 
     Human --> API
@@ -453,9 +493,12 @@ flowchart LR
     Evidence --> Candidate
     Candidate -->|"验证并晋升"| Learning
     Learning --> Agent
+    Learning --> Impact
+    Agent --> Impact
     Task --> Store
     Evidence --> Store
     Learning --> Store
+    Impact --> Store
 ```
 
 详细实现见：

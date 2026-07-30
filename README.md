@@ -182,11 +182,16 @@ Sources: [GitHub Copilot Memory](https://docs.github.com/en/copilot/concepts/age
 - Every recall returns a compact context revision plus structured reasons,
   scores, and conflict warnings, so an Agent can say why a note entered its
   context.
+- Every returned project rule and scoped experience creates a durable impact
+  receipt. The receipt separates recall, actual application, and verified
+  outcome instead of treating “included in context” as “helped”.
 - Promoted-memory edits use optimistic concurrency. A stale browser tab cannot
   overwrite a newer correction.
 - Manual promotion with evidence; rejected candidates stay out of recall.
+- A visible recall → application → confirmation funnel, per-task decisions,
+  verification evidence, and per-memory impact history.
 - Counts for runs, completion, blocked recovery, candidates, promotions,
-  recalled tasks, and actual reuse results.
+  recall coverage, application rate, confirmation rate, and actual results.
 
 Canonical binaries are `runengram-server` and `runengram`. Release archives
 also include `taskline-server` and `taskline` compatibility symlinks so
@@ -202,8 +207,13 @@ existing automation can migrate without downtime.
 4. A developer can edit its trigger, guidance, and scope.
 5. The candidate needs concrete evidence and a memory class before promotion:
    a project rule applies broadly; scoped experience is retrieved by relevance.
-6. Later tasks record whether recalled memory helped, was rejected, or stale.
-   Feedback from distinct tasks changes its confidence and validation state.
+6. Every later recall first records what entered the Agent context and why.
+7. The Agent or developer records whether it affected execution or was
+   intentionally ignored.
+8. Verification records whether applied memory helped, was rejected, or became
+   stale, with a command, document, event, link, code reference, or observation
+   as evidence. Feedback from distinct tasks changes confidence and validation
+   state.
 
 RunEngram does not copy whole chat transcripts. It does not store secrets,
 tokens, hidden reasoning, or unreviewed guesses. Only reviewed entries are
@@ -224,6 +234,38 @@ The active-task screen shows a **Learning receipt**. Project Knowledge shows
 pending candidates, their source task, and an edit action. Pending candidates
 never affect another run.
 
+### How reuse becomes visible
+
+Recall is not counted as success. RunEngram keeps one impact receipt for each
+task and recalled memory item:
+
+| Receipt | Meaning |
+| --- | --- |
+| Recalled | Entered immutable task context or a later dynamic recall |
+| Applied | Changed a decision, command, file set, or implementation route |
+| Ignored | Agent inspected it and recorded why it did not apply |
+| Helpful | Verification evidence confirmed the guidance |
+| Rejected | Current task evidence contradicted the guidance |
+| Stale | Current code or policy invalidated previously valid guidance |
+| Unconfirmed | Task ended before an applied/ignored/final decision was recorded |
+
+The task panel shows the matched rule, recall reason, stage, actor, notes, and
+evidence. **Engineering Memory** shows both a project-wide funnel and each
+memory item's task history. This makes outcomes such as “the Agent avoided the
+forbidden full Gradle build” reviewable instead of hiding them in chat.
+
+Metrics use stored receipts only:
+
+- **Recall coverage** — completed Agent tasks with recalled memory ÷ completed
+  Agent tasks;
+- **Application rate** — tasks that applied at least one item ÷ tasks that
+  recalled memory;
+- **Confirmation rate** — tasks with a helpful/rejected/stale result ÷ tasks
+  that applied or finalized memory.
+
+Old context snapshots can be backfilled as `recalled`, but RunEngram never
+guesses historical application or benefit. It does not claim time saved.
+
 ### How memory earns trust
 
 | State | Meaning | Effect |
@@ -235,7 +277,8 @@ never affect another run.
 | Stale | Current code or tooling disproved it | Excluded from recall |
 
 One task can update one outcome per memory item, so repeatedly clicking
-“helpful” in the same task cannot manufacture trust. Review starts at 0.60,
+“helpful” in the same task cannot manufacture trust. Never mark an item helpful
+merely because it appeared in context. Review starts at 0.60,
 helpful reuse adds 0.10, rejection subtracts 0.15, and stale memory drops to
 zero. This is confidence in observed reuse, not a claim that RunEngram measured
 hours saved.
@@ -461,7 +504,12 @@ runengram capsule create --project your-project --source-task <task-id> \
   --title "Reusable boundary" --summary "Verified finding" \
   --scope "Affected module" --evidence-file ./evidence.md \
   --fingerprint module-name --producer codex
-runengram capsule use <capsule-id> --task <task-id> --outcome helpful
+runengram capsule use <capsule-id> --task <task-id> --outcome used \
+  --stage dev --notes "Changed verification route"
+runengram capsule use <capsule-id> --task <task-id> --outcome helpful \
+  --stage test --notes "Focused checks passed" \
+  --evidence-kind command --evidence-ref "./gradlew :module:test" \
+  --evidence-summary "exit 0"
 runengram capsule metrics --project your-project
 runengram task resume <task-id>
 runengram project delete temporary-smoke-project
@@ -480,6 +528,7 @@ flowchart LR
     Evidence["Verification evidence"]
     Candidate["Pending learning notes"]
     Learning["Verified Exploration Capsules"]
+    Impact["Recall → application → outcome receipts"]
     Store[("SQLite + Markdown")]
 
     Human --> API
@@ -493,9 +542,12 @@ flowchart LR
     Evidence --> Candidate
     Candidate -->|"verify + promote"| Learning
     Learning --> Agent
+    Learning --> Impact
+    Agent --> Impact
     Task --> Store
     Evidence --> Store
     Learning --> Store
+    Impact --> Store
 ```
 
 More detail:

@@ -214,6 +214,33 @@ be edited by the live task owner. Promoted or rejected notes are immutable;
 correcting promoted knowledge requires archiving its capsule and capturing a
 new candidate.
 
+### Memory impact ledger
+
+`memory_impacts` is the causal receipt between recall and later validation. One
+row exists per `(task_id, capsule_id)`. It stores recall source, query, reason,
+score, context revision, current state, application stage, actor, notes,
+evidence, and timestamps.
+
+The state progression is intentionally explicit:
+
+```text
+recalled → applied → helpful | rejected | stale
+        └→ ignored
+        └→ unconfirmed (task completed without a decision)
+```
+
+Reading initial task context or performing dynamic recall upserts `recalled`
+rows for both project rules and scoped experience. Repeated recall preserves a
+stronger existing decision. Agents report `applied` or `ignored`; final results
+require typed evidence. A developer may correct a final result with optimistic
+concurrency. An Agent cannot silently replace a different final result.
+
+Task completion reconciles unresolved `recalled` and `applied` rows to
+`unconfirmed`. Existing immutable context snapshots can create historical
+`recalled` rows, but no migration infers historical application or benefit.
+Learning metrics aggregate unique tasks from this ledger, so recall coverage,
+application rate, and confirmation rate are auditable rather than estimated.
+
 ## Task operation history
 
 Mutation handlers resolve an actor once per request. A valid bearer token wins
@@ -346,6 +373,11 @@ mutating the immutable task-start snapshot. The public skill drives capture at h
 moments and resolves candidates after test evidence exists; the server
 enforces capture ownership, review authentication, status, evidence, and
 atomicity independently of any agent tool.
+
+Recall and impact are separate facts. Context reads create `recalled`
+`memory_impacts`; Agents then write `applied` or `ignored`, and verification
+writes `helpful`, `rejected`, or `stale` with typed evidence. Confidence changes
+only from final task-level outcomes, never from recall count.
 
 Automatic capture is deliberately narrow. Explicit reusable project
 conventions, human corrections that change execution, and verified recovery

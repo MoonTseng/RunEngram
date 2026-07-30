@@ -457,7 +457,10 @@ runengram capsule create --project demo --source-task <id> \
   --evidence-file ./verified-evidence.md \
   --label webview --fingerprint url-service --producer codex
 runengram capsule use <capsule-id> --task <id> --outcome helpful \
-  --notes "avoided repeated caller search"
+  --stage test \
+  --notes "avoided repeated caller search" \
+  --evidence-kind command --evidence-ref "./gradlew :app:test" \
+  --evidence-summary "focused tests passed"
 runengram capsule archive <capsule-id>
 runengram capsule metrics --project demo
 
@@ -713,6 +716,51 @@ it `disputed` and exclude it from automatic recall. Report the observed
 outcome, not a desired score. A `trusted` label means repeated evidence, not
 universal truth.
 
+### Memory impact receipts
+
+Reading `task context` or `task recall` creates a `recalled` receipt for every
+returned project rule and scoped experience. This records what entered the
+Agent context; it does not claim that the Agent used it.
+
+After considering recalled memory, report what changed:
+
+```bash
+# Guidance changed a decision, command, file set, or implementation route.
+runengram capsule use <capsule-id> --task <id> --outcome used \
+  --stage dev --notes "Skipped the prohibited full Gradle build"
+
+# Guidance was considered but did not apply to this task.
+runengram capsule use <capsule-id> --task <id> --outcome ignored \
+  --stage dev --notes "Task does not touch Android build configuration"
+```
+
+After verification, replace `used` with a final observed result and attach
+evidence:
+
+```bash
+runengram capsule use <capsule-id> --task <id> --outcome helpful \
+  --stage test --notes "Focused module checks were sufficient" \
+  --evidence-kind command --evidence-ref "./gradlew :service:test" \
+  --evidence-summary "exit 0; required module tests passed"
+```
+
+Supported evidence kinds are `command`, `task-doc`, `task-event`, `link`,
+`code-reference`, and `observation`. Use a stable command, document ID, event
+ID, URL, or file/symbol reference in `--evidence-ref`; summarize the observed
+result in `--evidence-summary`.
+
+Never mark memory `helpful` merely because it was recalled. Use:
+
+- `used` when it affected execution but verification is not complete;
+- `ignored` when it was inspected and intentionally not applied;
+- `helpful` when evidence confirms it improved or correctly constrained work;
+- `rejected` when current evidence shows it was wrong for this task;
+- `stale` when current code or policy invalidates previously valid guidance.
+
+If a task finishes while a receipt remains `recalled` or `used`, RunEngram
+marks it `unconfirmed`. The task view then shows the missing decision instead
+of silently counting it as reuse.
+
 Use typed relations sparingly:
 
 - `validated-by` links a Capsule to real task, artifact, or Capsule evidence;
@@ -889,10 +937,10 @@ task description or implementation notes, then continue.
   8. Create or update a `Dev Notes` task doc summarizing the
      implementation, issues encountered, and any divergence from the
      `Spec` doc with the reason.
-  9. For each recalled capsule used, record the observed result:
-     `runengram capsule use <capsule-id> --task <id> --outcome helpful|rejected|stale`.
-     Use `stale` when current code disproves once-valid knowledge. Include a
-     short note explaining evidence.
+  9. For each recalled capsule, record `used` as soon as it changes execution
+     or `ignored` when it does not apply. After verification, replace `used`
+     with `helpful`, `rejected`, or `stale` and attach
+     `--evidence-kind`, `--evidence-ref`, and `--evidence-summary`.
 - **Advance:** `runengram task update <id> --state test`
 - **Checkpoint:** save implementation result, changed boundary, known risk,
   and first verification command with `runengram run checkpoint <run-id>`.
