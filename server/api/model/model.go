@@ -602,6 +602,91 @@ type CapsuleUsage struct {
 	UpdatedAt int64          `json:"updated_at"`
 }
 
+type MemoryImpactState string
+
+const (
+	MemoryImpactRecalled    MemoryImpactState = "recalled"
+	MemoryImpactApplied     MemoryImpactState = "applied"
+	MemoryImpactIgnored     MemoryImpactState = "ignored"
+	MemoryImpactHelpful     MemoryImpactState = "helpful"
+	MemoryImpactRejected    MemoryImpactState = "rejected"
+	MemoryImpactStale       MemoryImpactState = "stale"
+	MemoryImpactUnconfirmed MemoryImpactState = "unconfirmed"
+)
+
+func (s MemoryImpactState) Valid() bool {
+	switch s {
+	case MemoryImpactRecalled, MemoryImpactApplied, MemoryImpactIgnored,
+		MemoryImpactHelpful, MemoryImpactRejected, MemoryImpactStale,
+		MemoryImpactUnconfirmed:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s MemoryImpactState) Terminal() bool {
+	return s == MemoryImpactHelpful || s == MemoryImpactRejected || s == MemoryImpactStale
+}
+
+func (s MemoryImpactState) CanTransitionTo(next MemoryImpactState) bool {
+	if s == next {
+		return true
+	}
+	switch s {
+	case MemoryImpactRecalled:
+		return next == MemoryImpactApplied || next == MemoryImpactIgnored ||
+			next == MemoryImpactHelpful || next == MemoryImpactRejected ||
+			next == MemoryImpactStale || next == MemoryImpactUnconfirmed
+	case MemoryImpactApplied:
+		return next == MemoryImpactHelpful || next == MemoryImpactRejected ||
+			next == MemoryImpactStale
+	case MemoryImpactIgnored, MemoryImpactUnconfirmed:
+		return next == MemoryImpactApplied || next == MemoryImpactIgnored ||
+			next == MemoryImpactHelpful || next == MemoryImpactRejected ||
+			next == MemoryImpactStale
+	default:
+		return false
+	}
+}
+
+type MemoryImpactEvidence struct {
+	Kind    string `json:"kind"`
+	Ref     string `json:"ref"`
+	Summary string `json:"summary"`
+}
+
+type MemoryImpact struct {
+	ID              string                 `json:"id"`
+	ProjectID       string                 `json:"project_id"`
+	TaskID          string                 `json:"task_id"`
+	CapsuleID       string                 `json:"capsule_id"`
+	State           MemoryImpactState      `json:"state"`
+	RecallSource    string                 `json:"recall_source"`
+	ContextRevision string                 `json:"context_revision"`
+	RecallScore     float64                `json:"recall_score"`
+	RecallReasons   []string               `json:"recall_reasons"`
+	Stage           string                 `json:"stage"`
+	Notes           string                 `json:"notes"`
+	Evidence        []MemoryImpactEvidence `json:"evidence"`
+	Actor           string                 `json:"actor"`
+	CreatedAt       int64                  `json:"created_at"`
+	UpdatedAt       int64                  `json:"updated_at"`
+	ResolvedAt      int64                  `json:"resolved_at,omitempty"`
+}
+
+type MemoryImpactMetrics struct {
+	RecalledTaskCount   int     `json:"recalled_task_count"`
+	RecalledMemoryCount int     `json:"recalled_memory_count"`
+	AppliedTaskCount    int     `json:"applied_task_count"`
+	HelpfulTaskCount    int     `json:"helpful_task_count"`
+	IgnoredCount        int     `json:"ignored_count"`
+	UnconfirmedCount    int     `json:"unconfirmed_count"`
+	RecallCoverageRate  float64 `json:"recall_coverage_rate"`
+	ApplicationRate     float64 `json:"application_rate"`
+	ConfirmationRate    float64 `json:"confirmation_rate"`
+}
+
 type LearningMetrics struct {
 	CapsuleCount       int     `json:"capsule_count"`
 	ActiveCapsuleCount int     `json:"active_capsule_count"`

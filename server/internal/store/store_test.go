@@ -1028,7 +1028,7 @@ func TestMigrationsRunOnceAcrossReopens(t *testing.T) {
 
 	v1, err := readUserVersion(path)
 	require.NoError(t, err)
-	require.Equal(t, 21, v1, "first open should advance to latest schema version")
+	require.Equal(t, 22, v1, "first open should advance to latest schema version")
 
 	require.NoError(t, st1.Close())
 
@@ -1177,7 +1177,7 @@ func TestMigrationAddsDocsTypeWithoutDroppingTaskChildren(t *testing.T) {
 
 	v, err := readUserVersion(path)
 	require.NoError(t, err)
-	require.Equal(t, 21, v)
+	require.Equal(t, 22, v)
 
 	got, err := st.GetTask(ctx, "b")
 	require.NoError(t, err)
@@ -1251,7 +1251,7 @@ func TestMigrationUpgradesCreatedAndDesignRows(t *testing.T) {
 
 	v, err := readUserVersion(path)
 	require.NoError(t, err)
-	require.Equal(t, 21, v, "migration should have run through latest schema version")
+	require.Equal(t, 22, v, "migration should have run through latest schema version")
 
 	// The legacy 'created' row was renamed to 'start' during the swap.
 	ta, err := st.GetTask(ctx, "a")
@@ -1330,7 +1330,7 @@ func TestMigration19MapsLegacyWorkflowKey(t *testing.T) {
 	run, err := st.GetAgentRun(ctx, "legacy-run")
 	require.NoError(t, err)
 	require.Equal(t, model.WorkflowTemplateEngineeringFlow, run.WorkflowTemplate)
-	require.Equal(t, 21, readStoreUserVersion(t, path))
+	require.Equal(t, 22, readStoreUserVersion(t, path))
 }
 
 func TestMigration20AddsLayeredMemoryColumns(t *testing.T) {
@@ -1373,7 +1373,7 @@ func TestMigration20AddsLayeredMemoryColumns(t *testing.T) {
 	require.NoError(t, rows.Err())
 	require.True(t, columns["memory_class"])
 	require.True(t, columns["trigger"])
-	require.Equal(t, 21, readStoreUserVersion(t, path))
+	require.Equal(t, 22, readStoreUserVersion(t, path))
 }
 
 func readStoreUserVersion(t *testing.T, path string) int {

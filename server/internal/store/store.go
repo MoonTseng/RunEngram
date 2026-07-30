@@ -81,6 +81,9 @@ var schemaLayeredMemory string
 //go:embed schema/0021_memory_graph.sql
 var schemaMemoryGraph string
 
+//go:embed schema/0022_memory_impacts.sql
+var schemaMemoryImpacts string
+
 // schemaMigrations defines the canonical migration set, keyed by
 // monotonically increasing version. We track the last-applied version in
 // SQLite's built-in `PRAGMA user_version` and only run migrations whose
@@ -114,6 +117,7 @@ var schemaMigrations = []migration{
 	{version: 19, sql: schemaGenericWorkflows},
 	{version: 20, sql: schemaLayeredMemory},
 	{version: 21, sql: schemaMemoryGraph},
+	{version: 22, sql: schemaMemoryImpacts},
 }
 
 // ErrNotFound is returned when a lookup misses.
