@@ -240,6 +240,20 @@ helpful reuse adds 0.10, rejection subtracts 0.15, and stale memory drops to
 zero. This is confidence in observed reuse, not a claim that RunEngram measured
 hours saved.
 
+When reviewing a pending candidate in **Engineering Memory**, choose what you
+checked: a command or test, code or configuration, a reviewed document, a
+reproduced fix, or an existing project convention. Then record two facts:
+
+1. **Checked** — the command, file path, document, observed failure, or
+   convention you inspected.
+2. **Result** — what passed, what the code contains, what changed after the
+   fix, or where the convention is already used.
+
+Source-task documents, links, and recent events appear as shortcuts. Selecting
+one fills the checked item; you still supply the observed result. RunEngram
+keeps **Verify and use in later tasks** disabled until the evidence is
+reviewable. This prevents “looks correct” from becoming project memory.
+
 ### How memory stays connected
 
 RunEngram stores memory as small reviewed records plus typed edges:
