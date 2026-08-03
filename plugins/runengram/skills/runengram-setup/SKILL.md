@@ -6,6 +6,8 @@ description: Install or upgrade the complete local RunEngram runtime for Codex, 
 # RunEngram Setup
 
 Install complete local runtime from checksum-verified GitHub release artifacts.
+The installer downloads the runtime matching plugin version by default, so a
+new Skill never silently drives an older CLI.
 
 ## Procedure
 
@@ -16,13 +18,13 @@ Install complete local runtime from checksum-verified GitHub release artifacts.
    - `~/.local/bin/runengram`
    - `~/.local/bin/runengram-service`
    - `~/.local/bin/taskline` (compatibility symlink)
-3. Run installer:
+3. Run installer. It resolves the matching plugin version automatically:
 
 ```bash
 bash <plugin-root>/scripts/install-runengram.sh
 ```
 
-To install specific version:
+Use an explicit override only for diagnosis or rollback:
 
 ```bash
 RUNENGRAM_VERSION=v0.7.0 bash <plugin-root>/scripts/install-runengram.sh
@@ -32,6 +34,7 @@ RUNENGRAM_VERSION=v0.7.0 bash <plugin-root>/scripts/install-runengram.sh
 
 ```bash
 runengram-service status
+runengram version
 runengram status
 ```
 

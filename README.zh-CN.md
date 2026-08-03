@@ -306,8 +306,8 @@ codex plugin list
 在这台电脑上安装并启动 RunEngram。
 ```
 
-安装过程会下载带校验和的 Release，安装到 `~/.local`，启动仅监听本机回环
-地址的服务；项目数据仍保存在本机。安装后可以输入
+安装过程会下载与插件基础版本一致、带校验和的 Release，安装到 `~/.local`，
+启动仅监听本机回环地址的服务；项目数据仍保存在本机。安装后可以输入
 `taskline-management 【需求描述】`，或从 Skill 列表选择
 **Taskline Management**。它是 Skill 触发词，不是终端命令。首次在 Git
 工程中使用时，RunEngram 会读取仓库名并自动创建对应项目，不再询问项目名。
@@ -517,6 +517,7 @@ flowchart LR
 ( cd cli && go test ./... )
 ( cd web && pnpm lint && pnpm test && pnpm build )
 ./scripts/test-skill.sh
+./scripts/test-plugin-installer.sh
 ```
 
 完整构建：

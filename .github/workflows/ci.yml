@@ -56,6 +56,9 @@ jobs:
       - name: Test local startup environment loading
         if: matrix.module == 'cli'
         run: ./scripts/test-start-local-env.sh
+      - name: Test plugin/runtime version binding
+        if: matrix.module == 'cli'
+        run: ./scripts/test-plugin-installer.sh
 
   web:
     runs-on: ubuntu-latest

@@ -78,6 +78,7 @@ required_sections = {
     "plugins/runengram/skills/runengram-setup/SKILL.md": [
         "## Procedure",
         "## Safety",
+        "matching plugin version",
         "runengram status",
         "runengram status",
     ],

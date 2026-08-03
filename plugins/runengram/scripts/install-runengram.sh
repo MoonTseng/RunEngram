@@ -2,7 +2,18 @@
 set -euo pipefail
 
 repository="${RUNENGRAM_REPOSITORY:-MoonTseng/RunEngram}"
-version="${RUNENGRAM_VERSION:-latest}"
+plugin_root="$(cd "$(dirname "$0")/.." && pwd)"
+plugin_manifest="${plugin_root}/.codex-plugin/plugin.json"
+plugin_version="$(
+  sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "${plugin_manifest}" |
+    head -n 1
+)"
+plugin_base_version="${plugin_version%%+*}"
+[[ "${plugin_base_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || {
+  echo "Cannot resolve runtime version from ${plugin_manifest}." >&2
+  exit 2
+}
+version="${RUNENGRAM_VERSION:-v${plugin_base_version}}"
 install_root="${RUNENGRAM_HOME:-${HOME}/.local/share/runengram}"
 bin_dir="${HOME}/.local/bin"
 
@@ -86,18 +97,28 @@ ln -sfn "${version_dir}" "${install_root}/current"
 
 link_binary() {
   local name="$1"
+  local allow_legacy="${2:-0}"
   local source="${install_root}/current/bin/${name}"
   local target="${bin_dir}/${name}"
   if [[ -e "${target}" && ! -L "${target}" ]]; then
-    echo "Refusing to overwrite non-symlink: ${target}" >&2
-    exit 1
+    local version_output=""
+    if [[ "${allow_legacy}" == "1" && -x "${target}" ]]; then
+      version_output="$("${target}" version 2>/dev/null || true)"
+    fi
+    if [[ "${version_output}" == taskline\ * || "${version_output}" == runengram\ * ]]; then
+      echo "[runengram] migrating legacy CLI: ${target}"
+      rm -f "${target}"
+    else
+      echo "Refusing to overwrite non-symlink: ${target}" >&2
+      exit 1
+    fi
   fi
   ln -sfn "${source}" "${target}"
 }
 
 link_binary runengram
 link_binary runengram-service
-link_binary taskline
+link_binary taskline 1
 "${bin_dir}/runengram-service" restart
 
 echo "[runengram] installed ${version} for ${os}/${arch}"

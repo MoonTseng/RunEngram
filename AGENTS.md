@@ -24,6 +24,8 @@ see `PRODUCT.md`.
 - `scripts/install-local.sh` — user-local CLI install plus public skill
   symlink refresh.
 - `scripts/test-skill.sh` — smoke tests for public and internal skill docs.
+- `scripts/test-plugin-installer.sh` — verifies plugin Setup downloads the
+  matching runtime version while preserving explicit rollback overrides.
 - `scripts/test-start-local-env.sh` — verifies `.env` is loaded before local
   listen and storage settings are resolved.
 
@@ -44,6 +46,7 @@ see `PRODUCT.md`.
 ( cd cli    && go test ./... )
 ( cd web    && pnpm lint && pnpm test && pnpm build )
 ./scripts/test-skill.sh
+./scripts/test-plugin-installer.sh
 ```
 
 `scripts/start-local.sh` builds the binaries and (re)starts the server in
@@ -130,7 +133,8 @@ and are not installed globally.
 - `( cd server && go test ./... )` — unit + `tests/e2e_test.go` boots a
   real server on a random port.
 - `( cd cli && go test ./... )` — covers the CLI surface.
-- `./scripts/test-skill.sh` when skill docs or install behavior changes.
+- `./scripts/test-skill.sh` and `./scripts/test-plugin-installer.sh` when skill
+  docs or plugin install behavior changes.
 - For UI changes, `( cd web && pnpm lint && pnpm test && pnpm build )`.
   Manual smoke-test in the browser if the change touches the kanban DnD
   or the React Flow graph.

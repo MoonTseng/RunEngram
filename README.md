@@ -354,7 +354,8 @@ Set up RunEngram on this computer.
 ```
 
 Setup downloads a checksum-verified release, installs it under `~/.local`,
-starts a loopback-only service, and keeps project data local. After setup,
+pins the runtime to the installed plugin's base version, starts a loopback-only
+service, and keeps project data local. After setup,
 type `taskline-management <request>` or select **Taskline Management** from the
 Skill picker. It is a Skill trigger, not a shell command. On first use inside
 a Git repository, RunEngram derives the repository name and creates the
@@ -566,6 +567,7 @@ More detail:
 ( cd cli && go test ./... )
 ( cd web && pnpm lint && pnpm test && pnpm build )
 ./scripts/test-skill.sh
+./scripts/test-plugin-installer.sh
 ```
 
 Release-style build:
